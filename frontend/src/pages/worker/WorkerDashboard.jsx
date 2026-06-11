@@ -5,10 +5,28 @@ import { demandsAPI, servicesAPI, nurseAPI } from '../../services/api';
 import {
   FileText, RefreshCw, CheckCircle, Clock,
   ChevronRight, X, DollarSign, Scan, PenLine,
-  AlertCircle, FlaskConical, FileImage, ListChecks, Stethoscope, MapPin, Phone
+  AlertCircle, FlaskConical, FileImage, ListChecks, Stethoscope, MapPin, Phone, Search
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+/* ── Search helpers (accent-insensitive, keyword-aware) ── */
+function normalize(str = '') {
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
+}
+function matchesQuery(service, query) {
+  if (!query.trim()) return true;
+  const q = normalize(query);
+  const haystack = normalize([service.name, service.code, service.keywords || ''].join(' '));
+  return q.split(/\s+/).every(w => haystack.includes(w));
+}
+function highlight(text, query) {
+  if (!query.trim()) return text;
+  const word = query.trim().split(/\s+/)[0];
+  const idx = normalize(text).indexOf(normalize(word));
+  if (idx === -1) return text;
+  return <>{text.slice(0, idx)}<mark style={{ background: 'rgba(10,147,150,0.18)', color: 'inherit', borderRadius: 2, padding: '0 2px' }}>{text.slice(idx, idx + word.length)}</mark>{text.slice(idx + word.length)}</>;
+}
 
 function useIsMobile() {
   const [v, setV] = useState(window.innerWidth <= 768);
@@ -330,6 +348,8 @@ function DemandModal({ demand, onClose, isMobile }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [detail, setDetail] = useState(demand);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchRef = React.useRef(null);
 
   useEffect(() => {
     servicesAPI.list().then(r => setServices(r.data)).catch(() => {});
@@ -421,21 +441,57 @@ function DemandModal({ demand, onClose, isMobile }) {
               </p>
               {error && <div className="alert alert-error"><AlertCircle size={14} />{error}</div>}
               {success && <div className="alert alert-success"><CheckCircle size={14} />Traité avec succès !</div>}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {services.map(s => (
+
+              {/* ── Search bar ── */}
+              <div style={styles.workerSearchWrap}>
+                <Search size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Rechercher… (ex : glycémie, NFS, TSH)"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  style={styles.workerSearchInput}
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} style={styles.workerClearBtn} title="Effacer">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* ── Result count ── */}
+              {searchQuery && (() => {
+                const n = services.filter(s => matchesQuery(s, searchQuery)).length;
+                return <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{n === 0 ? 'Aucun résultat' : `${n} analyse${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}`}</p>;
+              })()}
+
+              {/* ── Checklist ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', paddingRight: 2 }}>
+                {services.filter(s => matchesQuery(s, searchQuery)).length === 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0', color: 'var(--text-muted)' }}>
+                    <Search size={24} style={{ opacity: 0.35 }} />
+                    <p style={{ margin: 0, fontSize: '0.82rem' }}>Aucune analyse ne correspond à cette recherche.</p>
+                  </div>
+                )}
+                {services.filter(s => matchesQuery(s, searchQuery)).map(s => (
                   <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 13px', borderRadius: 'var(--radius-sm)', border: '1.5px solid', borderColor: selected.includes(s.id) ? 'var(--teal)' : 'var(--border)', background: selected.includes(s.id) ? 'rgba(10,147,150,0.07)' : 'white', cursor: 'pointer', transition: 'all 0.15s' }}>
                     <input type="checkbox" checked={selected.includes(s.id)} onChange={() => toggle(s.id)} style={{ width: 'auto', accentColor: 'var(--teal)', flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <p style={{ margin: 0, fontWeight: 500, fontSize: '0.88rem' }}>{s.name}</p>
+                      <p style={{ margin: 0, fontWeight: 500, fontSize: '0.88rem' }}>{highlight(s.name, searchQuery)}</p>
                       <p style={{ margin: 0, fontSize: '0.74rem', color: 'var(--text-muted)' }}>{s.code}</p>
                     </div>
                     <span style={{ fontWeight: 700, color: 'var(--teal-dark)', fontSize: '0.88rem', flexShrink: 0 }}>{Number(s.price).toLocaleString('fr-DZ')} DA</span>
                   </label>
                 ))}
               </div>
+
               {selected.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--teal)', color: 'white', padding: '10px 14px', borderRadius: 'var(--radius-sm)', fontWeight: 700, fontSize: '0.92rem' }}>
                   <DollarSign size={15} /> Total : {totalPreview.toLocaleString('fr-DZ')} DA
+                  <span style={{ marginLeft: 'auto', fontSize: '0.78rem', background: 'rgba(255,255,255,0.2)', borderRadius: 10, padding: '2px 10px' }}>
+                    {selected.length} analyse{selected.length > 1 ? 's' : ''}
+                  </span>
                 </div>
               )}
               <div className="form-group">
@@ -482,4 +538,7 @@ const styles = {
   servicesList: { border: '1.5px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' },
   serviceRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid var(--border)' },
   totalRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '11px 14px', background: 'var(--navy)', color: 'white', fontSize: '0.9rem', fontWeight: 700 },
+  workerSearchWrap: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'white' },
+  workerSearchInput: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-body)', background: 'transparent', color: 'var(--navy)', minWidth: 0 },
+  workerClearBtn: { display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, flexShrink: 0 },
 };

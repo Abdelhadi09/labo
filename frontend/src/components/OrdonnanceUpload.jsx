@@ -1,11 +1,37 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { demandsAPI, servicesAPI } from '../services/api';
 import {
   Upload, FileImage, Scan, PenLine, CheckCircle,
-  AlertCircle, X, DollarSign, FlaskConical, ListChecks
+  AlertCircle, X, DollarSign, FlaskConical, ListChecks,
+  Search, ChevronDown
 } from 'lucide-react';
 
+/* ─────────────────────────────────────────────
+   Fuzzy / keyword matcher
+   Matches against name, code, and keywords field
+───────────────────────────────────────────── */
+function normalize(str = '') {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // strip accents
+    .replace(/[^a-z0-9\s]/g, '');
+}
+
+function matchesQuery(service, query) {
+  if (!query.trim()) return true;
+  const q = normalize(query);
+  const haystack = normalize(
+    [service.name, service.code, service.keywords || ''].join(' ')
+  );
+  // Every word of the query must appear somewhere
+  return q.split(/\s+/).every(word => haystack.includes(word));
+}
+
+/* ─────────────────────────────────────────────
+   Main component
+───────────────────────────────────────────── */
 export default function OrdonnanceUpload({ onSuccess }) {
   const [type, setType] = useState(null); // 'ocr' | 'handwritten' | 'manual'
   const [file, setFile] = useState(null);
@@ -15,9 +41,21 @@ export default function OrdonnanceUpload({ onSuccess }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
+  // Search / filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSelected, setShowSelected] = useState(false);
+  const searchRef = useRef(null);
+
   useEffect(() => {
     servicesAPI.list().then(res => setServices(res.data)).catch(() => {});
   }, []);
+
+  // Focus search when manual mode is entered
+  useEffect(() => {
+    if (type === 'manual' && searchRef.current) {
+      setTimeout(() => searchRef.current?.focus(), 100);
+    }
+  }, [type]);
 
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
@@ -45,11 +83,6 @@ export default function OrdonnanceUpload({ onSuccess }) {
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
     );
   };
-
-  const totalPreview = selectedServices.reduce((sum, id) => {
-    const s = services.find(s => s.id === id);
-    return sum + (s ? parseFloat(s.price) : 0);
-  }, 0);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -90,9 +123,16 @@ export default function OrdonnanceUpload({ onSuccess }) {
     setResult(null);
     setError('');
     setSelectedServices([]);
+    setSearchQuery('');
+    setShowSelected(false);
   };
 
   if (result) return <SubmitResult result={result} onReset={reset} />;
+
+  // Filtered services list
+  const visibleServices = showSelected
+    ? services.filter(s => selectedServices.includes(s.id))
+    : services.filter(s => matchesQuery(s, searchQuery));
 
   return (
     <div style={styles.container}>
@@ -135,36 +175,106 @@ export default function OrdonnanceUpload({ onSuccess }) {
         </div>
       )}
 
-      {/* Manual — service checklist */}
+      {/* ── Manual — service checklist with search ── */}
       {type === 'manual' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <p style={styles.label}>Sélectionnez les analyses dont vous avez besoin :</p>
+
+          {/* Search bar */}
+          <div style={styles.searchWrap}>
+            <Search size={15} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Rechercher une analyse… (ex : glycémie, NFS, TSH)"
+              value={searchQuery}
+              onChange={e => { setSearchQuery(e.target.value); setShowSelected(false); }}
+              style={styles.searchInput}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={styles.clearBtn}
+                title="Effacer"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Filter chips */}
+          <div style={styles.filterRow}>
+            <span style={styles.filterLabel}>Afficher :</span>
+            <button
+              style={{ ...styles.chip, ...((!showSelected && !searchQuery) ? styles.chipActive : {}) }}
+              onClick={() => { setShowSelected(false); setSearchQuery(''); }}
+            >
+              Toutes ({services.length})
+            </button>
+            <button
+              style={{ ...styles.chip, ...(showSelected ? styles.chipActive : {}) }}
+              onClick={() => { setShowSelected(true); setSearchQuery(''); }}
+            >
+              <CheckCircle size={12} />
+              Sélectionnées ({selectedServices.length})
+            </button>
+          </div>
+
+          {/* Results count */}
+          {searchQuery && (
+            <p style={styles.resultCount}>
+              {visibleServices.length === 0
+                ? 'Aucun résultat'
+                : `${visibleServices.length} analyse${visibleServices.length > 1 ? 's' : ''} trouvée${visibleServices.length > 1 ? 's' : ''}`}
+            </p>
+          )}
+
+          {/* Checklist */}
           <div style={styles.checkList}>
-            {services.map((s) => (
-              <label key={s.id} style={{
-                ...styles.checkItem,
-                background: selectedServices.includes(s.id) ? 'rgba(10,147,150,0.07)' : 'white',
-                borderColor: selectedServices.includes(s.id) ? 'var(--teal)' : 'var(--border)',
-              }}>
-                <input
-                  type="checkbox"
-                  checked={selectedServices.includes(s.id)}
-                  onChange={() => toggleService(s.id)}
-                  style={{ width: 'auto', accentColor: 'var(--teal)', flexShrink: 0 }}
-                />
-                <div style={{ flex: 1 }}>
-                  <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem' }}>{s.name}</p>
-                  <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-muted)' }}>{s.code}</p>
-                </div>
-               
-              </label>
-            ))}
+            {visibleServices.length === 0 && (
+              <div style={styles.emptyState}>
+                <Search size={28} color="var(--text-muted)" style={{ opacity: 0.4 }} />
+                <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)' }}>
+                  {showSelected
+                    ? 'Aucune analyse sélectionnée.'
+                    : 'Aucun résultat pour cette recherche.'}
+                </p>
+              </div>
+            )}
+
+            {visibleServices.map((s) => {
+              const isSelected = selectedServices.includes(s.id);
+              return (
+                <label key={s.id} style={{
+                  ...styles.checkItem,
+                  background: isSelected ? 'rgba(10,147,150,0.07)' : 'white',
+                  borderColor: isSelected ? 'var(--teal)' : 'var(--border)',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleService(s.id)}
+                    style={{ width: 'auto', accentColor: 'var(--teal)', flexShrink: 0 }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem' }}>
+                      {highlight(s.name, searchQuery)}
+                    </p>
+                    <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                      {s.code}
+                    </p>
+                  </div>
+
+                </label>
+              );
+            })}
           </div>
 
           {selectedServices.length > 0 && (
-            <div style={styles.totalPreview}>
-              <DollarSign size={15} />
-              <span>Total estimé : <strong>{totalPreview.toLocaleString('fr-DZ')} DA</strong></span>
+            <div style={styles.selectionCount}>
+              <CheckCircle size={14} color="var(--teal)" />
+              <span>
+                {selectedServices.length} analyse{selectedServices.length > 1 ? 's' : ''} sélectionnée{selectedServices.length > 1 ? 's' : ''}
+              </span>
             </div>
           )}
         </div>
@@ -239,6 +349,30 @@ export default function OrdonnanceUpload({ onSuccess }) {
   );
 }
 
+/* ─────────────────────────────────────────────
+   Highlight matched text in service names
+───────────────────────────────────────────── */
+function highlight(text, query) {
+  if (!query.trim()) return text;
+  const word = query.trim().split(/\s+/)[0]; // highlight first word only for simplicity
+  const normWord = normalize(word);
+  const normText = normalize(text);
+  const idx = normText.indexOf(normWord);
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark style={{ background: 'rgba(10,147,150,0.18)', color: 'inherit', borderRadius: 2, padding: '0 2px' }}>
+        {text.slice(idx, idx + word.length)}
+      </mark>
+      {text.slice(idx + word.length)}
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Submit result panel (unchanged logic)
+───────────────────────────────────────────── */
 function SubmitResult({ result, onReset }) {
   const isImmediate = ['ocr_processed', 'processed'].includes(result.status);
   const hasServices = result.matched_services?.length > 0;
@@ -288,6 +422,9 @@ function SubmitResult({ result, onReset }) {
   );
 }
 
+/* ─────────────────────────────────────────────
+   Styles
+───────────────────────────────────────────── */
 const styles = {
   container: { display: 'flex', flexDirection: 'column', gap: 20 },
   header: {
@@ -313,17 +450,73 @@ const styles = {
     background: 'none', border: 'none', color: 'var(--coral)',
     cursor: 'pointer', fontSize: '0.78rem', fontFamily: 'var(--font-body)', marginLeft: 'auto',
   },
-  checkList: { display: 'flex', flexDirection: 'column', gap: 8 },
+
+  // ── Search ──
+  searchWrap: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '9px 14px',
+    border: '1.5px solid var(--border)',
+    borderRadius: 'var(--radius-sm)',
+    background: 'white',
+    transition: 'border-color 0.15s',
+  },
+  searchInput: {
+    flex: 1, border: 'none', outline: 'none',
+    fontSize: '0.88rem', fontFamily: 'var(--font-body)',
+    background: 'transparent', color: 'var(--navy)',
+    minWidth: 0,
+  },
+  clearBtn: {
+    display: 'flex', alignItems: 'center',
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--text-muted)', padding: 2, flexShrink: 0,
+  },
+  filterRow: {
+    display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+  },
+  filterLabel: { fontSize: '0.78rem', color: 'var(--text-muted)', marginRight: 2 },
+  chip: {
+    display: 'inline-flex', alignItems: 'center', gap: 5,
+    padding: '4px 12px', borderRadius: 20,
+    border: '1.5px solid var(--border)',
+    background: 'white', cursor: 'pointer',
+    fontSize: '0.78rem', color: 'var(--text-muted)',
+    fontFamily: 'var(--font-body)', transition: 'all 0.15s',
+  },
+  chipActive: {
+    borderColor: 'var(--teal)', background: 'rgba(10,147,150,0.08)',
+    color: 'var(--teal)', fontWeight: 600,
+  },
+  resultCount: {
+    margin: 0, fontSize: '0.78rem',
+    color: 'var(--text-muted)', fontStyle: 'italic',
+  },
+
+  // ── Checklist ──
+  checkList: {
+    display: 'flex', flexDirection: 'column', gap: 8,
+    maxHeight: 360, overflowY: 'auto',
+    paddingRight: 2,
+  },
   checkItem: {
     display: 'flex', alignItems: 'center', gap: 12,
     padding: '12px 14px', borderRadius: 'var(--radius-sm)',
     border: '1.5px solid', cursor: 'pointer', transition: 'all 0.15s',
   },
-  totalPreview: {
-    display: 'flex', alignItems: 'center', gap: 8,
-    background: 'var(--teal)', color: 'white',
-    padding: '10px 16px', borderRadius: 'var(--radius-sm)', fontSize: '0.92rem',
+  emptyState: {
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    gap: 10, padding: '32px 16px', color: 'var(--text-muted)',
   },
+
+  selectionCount: {
+    display: 'flex', alignItems: 'center', gap: 8,
+    padding: '9px 14px', borderRadius: 'var(--radius-sm)',
+    border: '1.5px solid rgba(10,147,150,0.3)',
+    background: 'rgba(10,147,150,0.05)',
+    fontSize: '0.85rem', color: 'var(--teal)',fontWeight: 500,
+  },
+
+  // ── Upload ──
   dropzone: {
     border: '2px dashed', borderRadius: 'var(--radius-md)',
     padding: '40px 24px', display: 'flex', flexDirection: 'column',
@@ -341,6 +534,8 @@ const styles = {
     display: 'flex', justifyContent: 'center',
     padding: 12, background: 'var(--cream-dark)', borderRadius: 'var(--radius-md)',
   },
+
+  // ── Result ──
   resultBox: { display: 'flex', flexDirection: 'column', gap: 16 },
   resultHeader: {
     display: 'flex', alignItems: 'flex-start', gap: 14, padding: 16,
