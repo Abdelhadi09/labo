@@ -46,8 +46,11 @@ export default function OrdonnanceUpload({ onSuccess }) {
   const [showSelected, setShowSelected] = useState(false);
   const searchRef = useRef(null);
 
+  // Confirmation modal (shown only if selected services have remarques)
+  const [showConfirm, setShowConfirm] = useState(false);
+
   useEffect(() => {
-    servicesAPI.list().then(res => setServices(res.data)).catch(() => {});
+    servicesAPI.list().then(res => setServices(res.data)).catch(() => { });
   }, []);
 
   // Focus search when manual mode is entered
@@ -82,6 +85,24 @@ export default function OrdonnanceUpload({ onSuccess }) {
     setSelectedServices(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
     );
+  };
+
+  const servicesWithRemarques = selectedServices
+    .map(id => services.find(s => s.id === id))
+    .filter(s => s && s.description && s.description.trim());
+
+  const handleSubmitClick = () => {
+    if (type === 'manual') {
+      if (selectedServices.length === 0) {
+        setError('Sélectionnez au moins une analyse');
+        return;
+      }
+      if (servicesWithRemarques.length > 0) {
+        setShowConfirm(true);
+        return;
+      }
+    }
+    handleSubmit();
   };
 
   const handleSubmit = async () => {
@@ -125,6 +146,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
     setSelectedServices([]);
     setSearchQuery('');
     setShowSelected(false);
+    setShowConfirm(false);
   };
 
   if (result) return <SubmitResult result={result} onReset={reset} />;
@@ -335,7 +357,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
       {type && (type === 'manual' ? selectedServices.length > 0 : !!file) && (
         <button
           className="btn btn-primary"
-          onClick={handleSubmit}
+          onClick={handleSubmitClick}
           disabled={loading}
           style={{ alignSelf: 'flex-start' }}
         >
@@ -344,6 +366,15 @@ export default function OrdonnanceUpload({ onSuccess }) {
             : <><Upload size={15} /> Soumettre la demande</>
           }
         </button>
+      )}
+
+      {showConfirm && (
+        <RemarqueModal
+          services={servicesWithRemarques}
+          loading={loading}
+          onCancel={() => setShowConfirm(false)}
+          onConfirm={() => { setShowConfirm(false); handleSubmit(); }}
+        />
       )}
     </div>
   );
@@ -367,6 +398,53 @@ function highlight(text, query) {
       </mark>
       {text.slice(idx + word.length)}
     </>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Remarque confirmation modal
+   Shown only if selected services have a non-empty
+   description (preparation instructions / remarques)
+───────────────────────────────────────────── */
+function RemarqueModal({ services, loading, onCancel, onConfirm }) {
+  return (
+    <div style={styles.modalOverlay} onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div style={styles.modalBox}>
+        <div style={styles.modalHeader}>
+          <AlertCircle size={20} color="var(--gold)" />
+          <h4 style={{ margin: 0, fontSize: '1rem' }}>Avant de continuer</h4>
+          <button onClick={onCancel} style={styles.modalCloseBtn}><X size={16} /></button>
+        </div>
+
+        <p style={styles.modalIntro}>
+          Certaines analyses sélectionnées nécessitent une préparation particulière. Merci de bien en prendre note :
+        </p>
+
+        <div style={styles.modalList}>
+          {services.map(s => (
+            <div key={s.id} style={styles.modalItem}>
+              <p style={styles.modalItemName}>{s.name}</p>
+              <p style={styles.modalItemNote}>
+                <AlertCircle size={13} color="var(--gold)" style={{ flexShrink: 0, marginTop: 1 }} />
+                {s.description}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div style={styles.modalActions}>
+          <button className="btn btn-secondary" onClick={onCancel} disabled={loading}>
+            Annuler
+          </button>
+          <button className="btn btn-primary" onClick={onConfirm} disabled={loading}>
+            {loading
+              ? <><span className="spinner" /> Envoi…</>
+              : <><CheckCircle size={15} /> J'ai compris, confirmer</>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -513,7 +591,7 @@ const styles = {
     padding: '9px 14px', borderRadius: 'var(--radius-sm)',
     border: '1.5px solid rgba(10,147,150,0.3)',
     background: 'rgba(10,147,150,0.05)',
-    fontSize: '0.85rem', color: 'var(--teal)',fontWeight: 500,
+    fontSize: '0.85rem', color: 'var(--teal)', fontWeight: 500,
   },
 
   // ── Upload ──
@@ -557,5 +635,47 @@ const styles = {
     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
     padding: '12px 16px', background: 'var(--navy)', color: 'white',
     fontSize: '0.9rem', fontWeight: 700,
+  },
+
+  // ── Remarque modal ──
+  modalOverlay: {
+    position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)',
+    backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
+    justifyContent: 'center', zIndex: 1000, padding: 16,
+  },
+  modalBox: {
+    background: 'white', borderRadius: 'var(--radius-lg)', width: '100%',
+    maxWidth: 480, maxHeight: '85vh', overflow: 'auto',
+    boxShadow: 'var(--shadow-lg)', display: 'flex', flexDirection: 'column',
+    gap: 14, padding: '18px 20px',
+  },
+  modalHeader: {
+    display: 'flex', alignItems: 'center', gap: 10,
+  },
+  modalCloseBtn: {
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: 'var(--text-muted)', padding: 2, marginLeft: 'auto', display: 'flex',
+  },
+  modalIntro: {
+    margin: 0, fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.5,
+  },
+  modalList: {
+    display: 'flex', flexDirection: 'column', gap: 10,
+    maxHeight: 280, overflowY: 'auto', paddingRight: 2,
+  },
+  modalItem: {
+    border: '1.5px solid rgba(212,160,23,0.35)',
+    background: 'rgba(212,160,23,0.06)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 12px',
+  },
+  modalItemName: {
+    margin: '0 0 4px 0', fontWeight: 600, fontSize: '0.9rem', color: 'var(--navy)',
+  },
+  modalItemNote: {
+    margin: 0, fontSize: '0.82rem', color: 'var(--text-dark)',
+    display: 'flex', gap: 6, alignItems: 'flex-start', lineHeight: 1.4,
+  },
+  modalActions: {
+    display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4,
   },
 };
