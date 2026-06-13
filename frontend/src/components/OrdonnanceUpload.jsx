@@ -686,7 +686,7 @@ const styles = {
   justifyContent: 'center',
   gap: '8px',
   padding: '10px 8px',
-  borderRadius: 'var(--radius-sm)',
+  borderRadius: '24px',
   fontFamily: 'var(--font-body)',
   fontSize: '0.9rem',
   fontWeight: 500,

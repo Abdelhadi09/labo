@@ -52,7 +52,7 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
         {/* Header */}
         <div style={styles.header}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.05rem' }}>🩺 Demander une infirmière à domicile</h3>
+            <h3 style={{ margin: 0, fontSize: '1.05rem' }}> Demander une infirmière à domicile</h3>
             <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 3 }}>
               Un professionnel se déplacera chez vous pour le prélèvement
             </p>
@@ -154,7 +154,7 @@ const styles = {
   overlay: {
     position: 'fixed', inset: 0,
     background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    display: 'flex', justifyContent: 'center',
     zIndex: 1000, padding: 16,
   },
   modal: {
