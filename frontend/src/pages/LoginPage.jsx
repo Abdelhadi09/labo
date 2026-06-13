@@ -59,8 +59,7 @@ function MobileLogo() {
         <FlaskConical size={26} color="white" />
       </div>
       <div>
-        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--navy)', margin: 0 }}>BioLab Analyse</p>
-        <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: 0 }}>Laboratoire d'analyses médicales</p>
+        <p style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', color: 'var(--navy)', margin: 0 }}>BioLin Analyse</p>
       </div>
     </div>
   );
@@ -139,10 +138,10 @@ function ClientLoginForm({ isMobile }) {
 
   return (
     <div style={{ width: '100%', maxWidth: 420 }}>
-      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.7rem', marginBottom: 4 }}>
+      <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.7rem', marginBottom: 4 , textAlign: isMobile ? 'center' : 'left' }}>
         {method === 'worker' ? 'Espace technicien' : 'Connexion'}
       </h2>
-      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 24 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 24 ,  textAlign: isMobile ? 'center' : 'left' }}>
         {method === 'worker' ? 'Accès réservé au personnel du laboratoire' : 'Accédez à votre espace patient'}
       </p>
 
@@ -154,7 +153,7 @@ function ClientLoginForm({ isMobile }) {
         <form onSubmit={handleWorkerLogin} style={S.form}>
           <div className="form-group">
             <label>Nom d'utilisateur</label>
-            <input type="text" value={workerUser} onChange={e => setWorkerUser(e.target.value)} placeholder="ikram" autoCapitalize="none" required />
+            <input type="text" value={workerUser} onChange={e => setWorkerUser(e.target.value)} placeholder="Username" autoCapitalize="none" required />
           </div>
           <div className="form-group">
             <label>Mot de passe</label>
@@ -180,8 +179,8 @@ function ClientLoginForm({ isMobile }) {
           {/* Method tabs */}
           <div style={S.methodTabs}>
             {[
-              { id: 'email',    label: '✉️ Email' },
-              { id: 'emailotp', label: '🔑 Code email' },
+              { id: 'email',    label: ' Email' },
+              { id: 'emailotp', label: ' Code email' },
             ].map(m => (
               <button key={m.id}
                 style={{ ...S.methodTab, ...(method === m.id ? S.methodTabActive : {}) }}
@@ -196,18 +195,18 @@ function ClientLoginForm({ isMobile }) {
             <form onSubmit={handleEmailLogin} style={S.form}>
               <div className="form-group">
                 <label>Adresse e-mail</label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="vous@exemple.com" required />
+                <input type="email" style={S.input} value={email} onChange={e => setEmail(e.target.value)} placeholder="Adresse e-mail" required />
               </div>
               <div className="form-group">
                 <label>Mot de passe</label>
                 <div style={{ position: 'relative' }}>
-                  <input type={showPwd ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required style={{ paddingRight: 40 }} />
+                  <input type={showPwd ? 'text' : 'password'} style={S.input} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
                   <button type="button" onClick={() => setShowPwd(p => !p)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                     {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </div>
-              <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
+              <button type="submit" className="btn btn-primary btn-lg btn-block" style={S.btnStyle} disabled={loading}>
                 {loading ? <span className="spinner" /> : 'Se connecter'}
               </button>
             </form>
@@ -257,8 +256,8 @@ function ClientLoginForm({ isMobile }) {
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, textAlign: 'center' }}>
             <button onClick={() => reset('worker')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.82rem', color: 'var(--text-muted)', fontFamily: 'var(--font-body)' }}>
-              👔 Accès technicien de laboratoire
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', color: 'var(--teal)', fontFamily: 'var(--font-body)' }}>
+               Accès technicien de laboratoire
             </button>
           </div>
         </>
@@ -269,10 +268,28 @@ function ClientLoginForm({ isMobile }) {
 
 const S = {
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
-  methodTabs: { display: 'flex', background: 'var(--cream-dark)', borderRadius: 'var(--radius-sm)', padding: 4, gap: 3, marginBottom: 20 },
-  methodTab: { flex: 1, padding: '8px 4px', border: 'none', background: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-muted)', transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent' },
+  methodTabs: { display: 'flex', background: 'var(--cream-dark)', borderRadius: 16, padding: 4, gap: 3, marginBottom: 20 },
+  methodTab: { flex: 1, padding: '8px 4px', border: 'none', background: 'none', borderRadius: 12, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-muted)', transition: 'all 0.15s', WebkitTapHighlightColor: 'transparent' },
   methodTabActive: { background: 'white', color: 'var(--navy)', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' },
   divider: { display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' },
   divLine: { flex: 1, height: 1, background: 'var(--border)', display: 'block' },
   divText: { color: 'var(--text-muted)', fontSize: '0.82rem', flexShrink: 0 },
+  input: { width: '100%', padding: '12px 14px', borderRadius: 24, border: '1.5px solid var(--border)', fontSize: '16px', fontFamily: 'var(--font-body)' , background: 'white', color: 'var(--text-dark)' , transition: 'border-color var(--transition)' , boxShadow : 'var (--transition)' , outline : 'none' },
+ btnStyle: {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  padding: '14px 30px',
+  borderRadius: 24,
+  fontFamily: 'var(--font-body)',
+  fontSize: '1rem',
+  fontWeight: 500,
+  border: 'none',
+  cursor: 'pointer',
+  transition: 'all var(--transition)',
+  whiteSpace: 'nowrap',
+  WebkitTapHighlightColor: 'transparent',
+  touchAction: 'manipulation',
+},
 };

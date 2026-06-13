@@ -110,7 +110,7 @@ export default function RegisterPage() {
 
       <div style={{ flex: isMobile ? '1 1 auto' : '0 0 480px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: isMobile ? 'flex-start' : 'center', padding: isMobile ? '40px 20px 32px' : '40px 36px', background: 'var(--cream)', overflowY: 'auto' }}>
         {isMobile && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 32, alignSelf: 'flex-start', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 44, alignSelf: 'flex-start', width: '100%' }}>
             <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg,var(--teal),var(--teal-dark))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <FlaskConical size={22} color="white" />
             </div>
@@ -119,8 +119,7 @@ export default function RegisterPage() {
         )}
 
         <div style={{ width: '100%', maxWidth: 420 }}>
-          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.7rem', marginBottom: 4 }}>Créer un compte</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 24 }}>Choisissez votre méthode d'inscription</p>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.7rem', marginBottom: 40, textAlign: isMobile ? 'center' : 'left' }}>Créer un compte</h2>
 
           {error && <div className="alert alert-error" style={{ marginBottom: 16 }}><AlertCircle size={14} style={{ flexShrink: 0 }} />{error}</div>}
           {info  && <div className="alert alert-info"  style={{ marginBottom: 16 }}>{info}</div>}
@@ -128,11 +127,7 @@ export default function RegisterPage() {
           {/* Method tabs 
           , { id: 'emailotp', label: '🔑 Code email' }
           */}
-          <div style={S.methodTabs}>
-            {[{ id: 'email', label: '✉️ Email' }].map(m => (
-              <button key={m.id} style={{ ...S.methodTab, ...(method === m.id ? S.methodTabActive : {}) }} onClick={() => reset(m.id)}>{m.label}</button>
-            ))}
-          </div>
+         
 
           {/* Email + password */}
           {method === 'email' && (

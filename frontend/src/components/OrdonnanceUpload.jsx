@@ -436,7 +436,9 @@ function RemarqueModal({ services, loading, onCancel, onConfirm }) {
           <button className="btn btn-secondary" onClick={onCancel} disabled={loading}>
             Annuler
           </button>
-          <button className="btn btn-primary" onClick={onConfirm} disabled={loading}>
+          <button className="btn btn-primary" 
+          style={styles.btnStyle }
+          onClick={onConfirm} disabled={loading}>
             {loading
               ? <><span className="spinner" /> Envoi…</>
               : <><CheckCircle size={15} /> J'ai compris, confirmer</>
@@ -678,4 +680,22 @@ const styles = {
   modalActions: {
     display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4,
   },
+  btnStyle: {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  padding: '10px 8px',
+  borderRadius: 'var(--radius-sm)',
+  fontFamily: 'var(--font-body)',
+  fontSize: '0.9rem',
+  fontWeight: 500,
+  border: 'none',
+  cursor: 'pointer',
+  transition: 'all var(--transition)',
+  whiteSpace: 'nowrap',
+  WebkitTapHighlightColor: 'transparent',
+  touchAction: 'manipulation',
+},
 };
+
