@@ -127,7 +127,7 @@ export default function WorkerDashboard() {
         )}
 
         <main style={{ flex: 1, minWidth: 0 }} className="page-enter">
-          {isMobile && (
+          {/* {isMobile && (
             <div style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', padding: 4, marginBottom: 14, gap: 3, overflowX: 'auto' }}>
               {tabs.map(({ id, label, count, urgent }) => (
                 <button key={id}
@@ -142,7 +142,7 @@ export default function WorkerDashboard() {
                 </button>
               ))}
             </div>
-          )}
+          )} */}
 
           {tab !== 'nurse' && (
             <>
@@ -522,9 +522,56 @@ const styles = {
   empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '60px 24px', color: 'var(--text-muted)' },
   mobileTab: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 6px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.8rem', fontWeight: 500, WebkitTapHighlightColor: 'transparent', transition: 'all 0.15s' },
   mobileTabActive: { background: 'var(--teal)', color: 'white' },
-  bottomNav: { position: 'fixed', bottom: 0, left: 0, right: 0, height: 64, background: 'white', borderTop: '1px solid var(--border)', boxShadow: '0 -2px 12px rgba(13,27,42,0.08)', display: 'flex', zIndex: 200, paddingBottom: 'env(safe-area-inset-bottom)' },
-  bottomItem: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px', color: 'var(--text-muted)', fontFamily: 'var(--font-body)', fontWeight: 500, position: 'relative', transition: 'color 0.15s', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' },
-  bottomActive: { color: 'var(--teal)' },
+ bottomNav: {
+  position: 'fixed',
+  bottom: 16,
+  left: 16,
+  right: 16,
+
+  height: 64,
+  background: 'rgba(255,255,255,0.95)',
+  backdropFilter: 'blur(20px)',
+
+  borderRadius: 999,
+  border: '1px solid rgba(0,0,0,0.05)',
+
+  boxShadow:
+    '0 8px 30px rgba(13,27,42,0.12), 0 2px 8px rgba(13,27,42,0.08)',
+
+  display: 'flex',
+  alignItems: 'center',
+  padding: 6,
+
+  zIndex: 200,
+},
+
+bottomItem: {
+  flex: 1,
+  height: '100%',
+
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 2,
+
+  background: 'transparent',
+  border: 'none',
+  borderRadius: 999,
+
+  color: 'var(--text-muted)',
+  cursor: 'pointer',
+  position: 'relative',
+
+  transition: 'all 0.25s ease',
+  WebkitTapHighlightColor: 'transparent',
+},
+
+bottomActive: {
+  background: 'var(--teal)',
+  color: '#fff',
+  boxShadow: '0 4px 12px rgba(0, 180, 180, 0.25)',
+},
   overlay: { position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
   modal: { background: 'white', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)' },
   modalMobile: { maxHeight: '95vh', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: '100%' },

@@ -460,21 +460,56 @@ const styles = {
   },
   tr: { borderBottom: '1px solid var(--border)' },
   td: { padding: '10px 14px', fontSize: '0.85rem', verticalAlign: 'middle' },
-  bottomNav: {
-    position: 'fixed', bottom: 0, left: 0, right: 0,
-    height: 64, background: 'white', borderTop: '1px solid var(--border)',
-    boxShadow: '0 -2px 12px rgba(13,27,42,0.08)',
-    display: 'flex', zIndex: 200, paddingBottom: 'env(safe-area-inset-bottom)',
-  },
-  bottomItem: {
-    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', gap: 2, background: 'none', border: 'none',
-    cursor: 'pointer', padding: '6px 4px', color: 'var(--text-muted)',
-    fontFamily: 'var(--font-body)', fontSize: '0.65rem', fontWeight: 500,
-    position: 'relative', transition: 'color 0.15s',
-    WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation',
-  },
-  bottomItemActive: { color: 'var(--teal)' },
+ bottomNav: {
+  position: 'fixed',
+  bottom: 16,
+  left: 16,
+  right: 16,
+
+  height: 64,
+  background: 'rgba(255,255,255,0.95)',
+  backdropFilter: 'blur(20px)',
+
+  borderRadius: 999,
+  border: '1px solid rgba(0,0,0,0.05)',
+
+  boxShadow:
+    '0 8px 30px rgba(13,27,42,0.12), 0 2px 8px rgba(13,27,42,0.08)',
+
+  display: 'flex',
+  alignItems: 'center',
+  padding: 6,
+
+  zIndex: 200,
+},
+
+bottomItem: {
+  flex: 1,
+  height: '100%',
+
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 2,
+
+  background: 'transparent',
+  border: 'none',
+  borderRadius: 999,
+
+  color: 'var(--text-muted)',
+  cursor: 'pointer',
+  position: 'relative',
+
+  transition: 'all 0.25s ease',
+  WebkitTapHighlightColor: 'transparent',
+},
+
+bottomItemActive: {
+  background: 'var(--teal)',
+  color: '#fff',
+  boxShadow: '0 4px 12px rgba(0, 180, 180, 0.25)',
+},
   bottomDot: {
     position: 'absolute', top: 8, right: 'calc(50% - 16px)',
     width: 7, height: 7, borderRadius: '50%', background: 'var(--coral)',

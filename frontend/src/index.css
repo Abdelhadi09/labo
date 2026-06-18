@@ -322,3 +322,26 @@ input::placeholder, textarea::placeholder { color: #b0b8c1; }
 
 /* ── Modal scroll lock ───────────────────────────────── */
 body.modal-open { overflow: hidden; }
+
+
+/* Nurse stepper — modal overrides */
+.nurse-stepper-container {
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  max-width: 100% !important;
+}
+
+.outer-container {
+  padding: 0 !important;
+  min-height: unset !important;
+  aspect-ratio: unset !important;
+}
+
+.nurse-stepper-footer {
+  padding-bottom: 1.25rem !important;
+}
+
+.nurse-stepper-content {
+  /* let the map picker breathe */
+}

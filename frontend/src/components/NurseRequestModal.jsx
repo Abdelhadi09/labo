@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { nurseAPI, profileAPI } from '../services/api';
 import MapPicker from './MapPicker';
-import { X, Phone, MapPin, CheckCircle, AlertCircle, User } from 'lucide-react';
+import Stepper, { Step } from './Stepper';
+import { X, Phone, MapPin, CheckCircle, AlertCircle, User, FlaskConical } from 'lucide-react';
 
 export default function NurseRequestModal({ demand, onClose, onSuccess }) {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
   const [phone, setPhone] = useState('');
   const [useProfileAddress, setUseProfileAddress] = useState(true);
   const [mapAddress, setMapAddress] = useState(null);
@@ -12,22 +14,24 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', fn);
+    return () => window.removeEventListener('resize', fn);
+  }, []);
+
+  useEffect(() => {
     profileAPI.get().then(res => {
       if (res.data?.address) setProfileAddress(res.data.address);
     }).catch(() => {});
-    // Lock body scroll
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = ''; };
   }, []);
 
-  const finalAddress = useProfileAddress
-    ? profileAddress
-    : mapAddress?.address;
+  const finalAddress = useProfileAddress ? profileAddress : mapAddress?.address;
 
   const handleSubmit = async () => {
     if (!phone.trim()) { setError('Veuillez entrer votre numéro de téléphone'); return; }
     if (!finalAddress) { setError('Veuillez sélectionner une adresse'); return; }
-
     setLoading(true);
     setError('');
     try {
@@ -47,12 +51,30 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
   };
 
   return (
-    <div style={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={styles.modal}>
+    <div
+      style={{
+        ...styles.overlay,
+        // On mobile: slide up from bottom like a sheet, not centered
+        alignItems: isMobile ? 'flex-start' : 'flex-start',
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div
+        style={{
+          ...styles.modal,
+          // On mobile: full width, rounded only at top, max 90% of screen height
+          borderRadius: isMobile ? '20px 20px 0 0' : 'var(--radius-lg)',
+          maxHeight: isMobile ? '90dvh' : '92vh', // dvh accounts for mobile browser chrome
+          width: '100%',
+          maxWidth: isMobile ? '100%' : 520,
+        }}
+      >
         {/* Header */}
         <div style={styles.header}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.05rem' }}> Demander une infirmière à domicile</h3>
+            <h3 style={{ margin: 0, fontSize: isMobile ? '0.98rem' : '1.05rem' }}>
+              Demander une infirmière à domicile
+            </h3>
             <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 3 }}>
               Un professionnel se déplacera chez vous pour le prélèvement
             </p>
@@ -60,91 +82,124 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
           <button style={styles.closeBtn} onClick={onClose}><X size={18} /></button>
         </div>
 
-        <div style={styles.body}>
-          {/* Demand summary */}
-          <div style={styles.demandSummary}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.05em' }}>Analyses concernées</span>
-              {demand.total_price && (
-                <span style={styles.priceTag}>{Number(demand.total_price).toLocaleString('fr-DZ')} DA</span>
+        {error && (
+          <div className="alert alert-error" style={{ margin: '10px 16px 0' }}>
+            <AlertCircle size={14} style={{ flexShrink: 0 }} />{error}
+          </div>
+        )}
+
+        <Stepper
+          onFinalStepCompleted={handleSubmit}
+          backButtonText="Précédent"
+          nextButtonText="Suivant"
+          stepCircleContainerClassName="nurse-stepper-container"
+          footerClassName="nurse-stepper-footer"
+          disableStepIndicators={false}
+        >
+
+          {/* ── Step 1 : Résumé ── */}
+          <Step>
+            <div style={styles.stepBody}>
+              <div style={styles.stepIcon}>
+                <FlaskConical size={20} color="var(--teal)" />
+              </div>
+              <h4 style={styles.stepTitle}>Analyses concernées</h4>
+              <div style={styles.demandSummary}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={styles.summaryLabel}>Votre demande</span>
+                  {demand.total_price && (
+                    <span style={styles.priceTag}>
+                      {Number(demand.total_price).toLocaleString('fr-DZ')} DA
+                    </span>
+                  )}
+                </div>
+                {demand.items?.length > 0 && (
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--navy)', lineHeight: 1.5 }}>
+                    {demand.items.map(i => i.name).join(' · ')}
+                  </p>
+                )}
+              </div>
+              <p style={styles.stepHint}>
+                Vérifiez que vos analyses sont correctes avant de continuer.
+              </p>
+            </div>
+          </Step>
+
+          {/* ── Step 2 : Téléphone ── */}
+          <Step>
+            <div style={styles.stepBody}>
+              <div style={styles.stepIcon}>
+                <Phone size={20} color="var(--teal)" />
+              </div>
+              <h4 style={styles.stepTitle}>Numéro de téléphone</h4>
+              <p style={styles.stepHint}>
+                L'infirmière vous contactera sur ce numéro pour confirmer le rendez-vous.
+              </p>
+              <div className="form-group" style={{ marginTop: 14 }}>
+                <label>Téléphone *</label>
+                <input
+                  type="tel"
+                  placeholder="Ex: 0555 123 456"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  // prevents zoom-in on iOS (font-size must be >= 16px)
+                  style={{ fontSize: '16px' }}
+                />
+              </div>
+            </div>
+          </Step>
+
+          {/* ── Step 3 : Adresse ── */}
+          <Step>
+            <div style={styles.stepBody}>
+              <div style={styles.stepIcon}>
+                <MapPin size={20} color="var(--teal)" />
+              </div>
+              <h4 style={styles.stepTitle}>Adresse de visite</h4>
+              <p style={styles.stepHint}>Où souhaitez-vous recevoir l'infirmière ?</p>
+
+              <div style={{ ...styles.addressToggle, flexDirection: isMobile ? 'column' : 'row' }}>
+                <button
+                  style={{ ...styles.toggleBtn, ...(useProfileAddress ? styles.toggleActive : {}), width: isMobile ? '100%' : 'auto' }}
+                  onClick={() => setUseProfileAddress(true)}
+                >
+                  <User size={14} /> Mon adresse de profil
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(!useProfileAddress ? styles.toggleActive : {}), width: isMobile ? '100%' : 'auto' }}
+                  onClick={() => setUseProfileAddress(false)}
+                >
+                  <MapPin size={14} /> Choisir sur la carte
+                </button>
+              </div>
+
+              {useProfileAddress ? (
+                profileAddress ? (
+                  <div style={styles.profileAddrBox}>
+                    <MapPin size={14} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <span style={{ fontSize: '0.85rem' }}>{profileAddress}</span>
+                  </div>
+                ) : (
+                  <div className="alert alert-warning" style={{ marginTop: 10 }}>
+                    <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                    Aucune adresse dans votre profil. Choisissez une adresse sur la carte.
+                  </div>
+                )
+              ) : (
+                <div style={{ marginTop: 12 }}>
+                  <MapPicker value={mapAddress} onChange={setMapAddress} />
+                </div>
               )}
             </div>
-            {demand.items?.length > 0 && (
-              <p style={{ margin: '6px 0 0', fontSize: '0.85rem', color: 'var(--navy)' }}>
-                {demand.items.map(i => i.name).join(' · ')}
-              </p>
-            )}
+          </Step>
+
+        </Stepper>
+
+        {loading && (
+          <div style={styles.loadingOverlay}>
+            <span className="spinner" style={{ width: 28, height: 28 }} />
           </div>
-
-          {error && (
-            <div className="alert alert-error">
-              <AlertCircle size={14} style={{ flexShrink: 0 }} />{error}
-            </div>
-          )}
-
-          {/* Phone */}
-          <div className="form-group">
-            <label><Phone size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Numéro de téléphone *</label>
-            <input
-              type="tel"
-              placeholder="Ex: 0555 123 456"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-            />
-          </div>
-
-          {/* Address choice */}
-          <div className="form-group">
-            <label><MapPin size={13} style={{ verticalAlign: 'middle', marginRight: 4 }} />Adresse de visite *</label>
-
-            <div style={styles.addressToggle}>
-              <button
-                style={{ ...styles.toggleBtn, ...(useProfileAddress ? styles.toggleActive : {}) }}
-                onClick={() => setUseProfileAddress(true)}
-              >
-                <User size={14} /> Utiliser mon adresse de profil
-              </button>
-              <button
-                style={{ ...styles.toggleBtn, ...(!useProfileAddress ? styles.toggleActive : {}) }}
-                onClick={() => setUseProfileAddress(false)}
-              >
-                <MapPin size={14} /> Choisir une autre adresse
-              </button>
-            </div>
-
-            {useProfileAddress ? (
-              profileAddress ? (
-                <div style={styles.profileAddrBox}>
-                  <MapPin size={14} color="var(--teal)" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: '0.85rem' }}>{profileAddress}</span>
-                </div>
-              ) : (
-                <div className="alert alert-warning" style={{ marginTop: 8 }}>
-                  <AlertCircle size={13} style={{ flexShrink: 0 }} />
-                  Aucune adresse dans votre profil. Choisissez une adresse sur la carte.
-                </div>
-              )
-            ) : (
-              <div style={{ marginTop: 10 }}>
-                <MapPicker value={mapAddress} onChange={setMapAddress} />
-              </div>
-            )}
-          </div>
-
-          {/* Submit */}
-          <button
-            className="btn btn-primary btn-block"
-            onClick={handleSubmit}
-            disabled={loading || !finalAddress}
-            style={{ marginTop: 4 }}
-          >
-            {loading
-              ? <span className="spinner" />
-              : <><CheckCircle size={15} /> Confirmer la demande</>
-            }
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -155,41 +210,67 @@ const styles = {
     position: 'fixed', inset: 0,
     background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)',
     display: 'flex', justifyContent: 'center',
-    zIndex: 1000, padding: 16,
+    zIndex: 1000,alignItems : 'flex-start', padding: 12,overflowY: 'auto',
+  },
+  // On mobile, the modal is full width and slides up from bottom, not centered
+  modal: {
+    background: 'white', overflow: 'auto', boxShadow: 'var(--shadow-lg)',
+    position: 'relative', 
+
   },
   modal: {
-    background: 'white', borderRadius: 'var(--radius-lg)',
-    width: '100%', maxWidth: 520,
-    maxHeight: '92vh', overflow: 'auto',
+    background: 'white',
+    overflow: 'auto',
     boxShadow: 'var(--shadow-lg)',
+    position: 'relative',
   },
   header: {
     display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-    padding: '16px 20px', borderBottom: '1px solid var(--border)',
+    padding: '14px 16px', borderBottom: '1px solid var(--border)',
     position: 'sticky', top: 0, background: 'white', zIndex: 1, gap: 12,
   },
   closeBtn: {
     background: 'none', border: 'none', cursor: 'pointer',
-    color: 'var(--text-muted)', padding: 4, borderRadius: 4,
+    color: 'var(--text-muted)', padding: 6, borderRadius: 4,
     display: 'flex', alignItems: 'center', flexShrink: 0,
+    minWidth: 44, minHeight: 44, justifyContent: 'center', // tap target
   },
-  body: { padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 18 },
+  stepBody: {
+    display: 'flex', flexDirection: 'column', gap: 8, paddingBottom: 8,
+  },
+  stepIcon: {
+    width: 42, height: 42, borderRadius: '50%',
+    background: 'rgba(10,147,150,0.1)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 2,
+  },
+  stepTitle: {
+    margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--navy)',
+  },
+  stepHint: {
+    margin: 0, fontSize: '0.83rem', color: 'var(--text-muted)', lineHeight: 1.5,
+  },
   demandSummary: {
     padding: '12px 14px', background: 'var(--cream)',
-    borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', marginTop: 4,
+  },
+  summaryLabel: {
+    fontSize: '0.75rem', color: 'var(--text-muted)',
+    fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
   },
   priceTag: {
-    fontWeight: 700, fontSize: '0.88rem', color: 'var(--teal-dark)',
+    fontWeight: 700, fontSize: '0.85rem', color: 'var(--teal-dark)',
     background: 'rgba(10,147,150,0.08)', padding: '3px 10px', borderRadius: 20,
   },
-  addressToggle: { display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' },
+  addressToggle: { display: 'flex', gap: 8, marginTop: 10 },
   toggleBtn: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    padding: '8px 14px', borderRadius: 'var(--radius-sm)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+    padding: '10px 14px', borderRadius: 'var(--radius-sm)',
     border: '1.5px solid var(--border)', background: 'white',
     cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.83rem',
     fontWeight: 500, color: 'var(--text-muted)', transition: 'all 0.15s',
     WebkitTapHighlightColor: 'transparent',
+    minHeight: 44, // tap target
   },
   toggleActive: {
     borderColor: 'var(--teal)', background: 'rgba(10,147,150,0.07)', color: 'var(--teal-dark)',
@@ -198,6 +279,11 @@ const styles = {
     display: 'flex', alignItems: 'flex-start', gap: 8,
     padding: '10px 12px', background: 'rgba(10,147,150,0.06)',
     borderRadius: 'var(--radius-sm)', border: '1px solid rgba(10,147,150,0.2)',
-    marginTop: 8, lineHeight: 1.5,
+    marginTop: 10, lineHeight: 1.5,
+  },
+  loadingOverlay: {
+    position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.7)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 'inherit', zIndex: 10,
   },
 };
