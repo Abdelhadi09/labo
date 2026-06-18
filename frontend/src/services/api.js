@@ -16,7 +16,6 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // Avoid forcing a full reload if we're already on the login page
       try {
         if (window.location.pathname !== '/login') window.location.href = '/login';
       } catch (e) {
@@ -43,15 +42,17 @@ export const servicesAPI = {
 };
 
 export const demandsAPI = {
-  submit: (formData) => api.post('/demands', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  list: () => api.get('/demands'),
-  get: (id) => api.get(`/demands/${id}`),
+  submit:  (formData) => api.post('/demands', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  // page: 1-based, limit: items per page
+  list:    (page = 1, limit = 20) => api.get('/demands', { params: { page, limit } }),
+  get:     (id) => api.get(`/demands/${id}`),
   process: (id, data) => api.put(`/demands/${id}/process`, data),
 };
 
 export const nurseAPI = {
-  request: (data) => api.post('/nurse', data),
-  list: () => api.get('/nurse'),
+  request:      (data) => api.post('/nurse', data),
+  // page: 1-based, limit: items per page
+  list:         (page = 1, limit = 20) => api.get('/nurse', { params: { page, limit } }),
   updateStatus: (id, status) => api.put(`/nurse/${id}/status`, { status }),
 };
 

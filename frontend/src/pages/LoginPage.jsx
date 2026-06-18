@@ -42,11 +42,7 @@ function LeftPanel() {
         <p style={{ color: 'rgba(255,255,255,0.72)', fontSize: '1rem', lineHeight: 1.7, marginBottom: 36 }}>
           Plateforme de gestion des analyses médicales — soumettez vos ordonnances, suivez vos résultats.
         </p>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          {['Vitamine D', 'ACE', 'ACR', 'AFP'].map(s => (
-            <span key={s} style={{ background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.9)', padding: '6px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 500, border: '1px solid rgba(255,255,255,0.15)' }}>{s}</span>
-          ))}
-        </div>
+        
       </div>
     </div>
   );

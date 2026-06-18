@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '../../components/Navbar';
 import StatusBadge from '../../components/StatusBadge';
+import Pagination from '../../components/Pagination';
 import { demandsAPI, servicesAPI, nurseAPI } from '../../services/api';
 import {
   FileText, RefreshCw, CheckCircle, Clock,
@@ -51,26 +52,46 @@ const NURSE_STATUS = {
 };
 
 export default function WorkerDashboard() {
+  const PAGE_LIMIT = 10;
+
   const [tab, setTab] = useState('all');
   const [demands, setDemands] = useState([]);
+  const [demandsTotal, setDemandsTotal] = useState(0);
+  const [demandsPage, setDemandsPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [nurseRequests, setNurseRequests] = useState([]);
+  const [nurseTotal, setNurseTotal] = useState(0);
+  const [nursePage, setNursePage] = useState(1);
   const [nurseLoading, setNurseLoading] = useState(false);
   const isMobile = useIsMobile();
 
-  const load = () => {
+  const load = (page = demandsPage) => {
     setLoading(true);
-    demandsAPI.list().then(r => setDemands(r.data)).catch(() => {}).finally(() => setLoading(false));
+    demandsAPI.list(page, PAGE_LIMIT)
+      .then(r => {
+        setDemands(r.data.data);
+        setDemandsTotal(r.data.total);
+        setDemandsPage(r.data.page);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   };
 
-  const loadNurse = () => {
+  const loadNurse = (page = nursePage) => {
     setNurseLoading(true);
-    nurseAPI.list().then(r => setNurseRequests(r.data)).catch(() => {}).finally(() => setNurseLoading(false));
+    nurseAPI.list(page, PAGE_LIMIT)
+      .then(r => {
+        setNurseRequests(r.data.data);
+        setNurseTotal(r.data.total);
+        setNursePage(r.data.page);
+      })
+      .catch(() => {})
+      .finally(() => setNurseLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => { if (tab === 'nurse') loadNurse(); }, [tab]);
+  useEffect(() => { load(1); }, []);
+  useEffect(() => { if (tab === 'nurse') loadNurse(1); }, [tab]);
   useEffect(() => {
     document.body.style.overflow = selected ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
@@ -80,8 +101,11 @@ export default function WorkerDashboard() {
   const processed = demands.filter(d => ['ocr_processed','processed'].includes(d.status));
   const nurseCount = nurseRequests.filter(r => r.status === 'pending').length;
 
+  const demandsTotalPages = Math.ceil(demandsTotal / PAGE_LIMIT);
+  const nurseTotalPages   = Math.ceil(nurseTotal   / PAGE_LIMIT);
+
   const tabs = [
-    { id: 'all',       label: 'Toutes',    count: demands.length },
+    { id: 'all',       label: 'Toutes',    count: demandsTotal },
     { id: 'pending',   label: 'À traiter', count: pending.length,   urgent: true },
     { id: 'processed', label: 'Traitées',  count: processed.length },
     { id: 'nurse',     label: 'Infirmière', count: nurseCount, urgent: nurseCount > 0, icon: <Stethoscope size={14} /> },
@@ -113,7 +137,7 @@ export default function WorkerDashboard() {
               ))}
             </nav>
             <div style={styles.statsBox}>
-              {[['Total', demands.length, 'var(--text-dark)'],
+              {[['Total', demandsTotal, 'var(--text-dark)'],
                 ['À traiter', pending.length, 'var(--coral)'],
                 ['Traitées', processed.length, 'var(--teal)'],
                 ['Infirmières', nurseCount, 'var(--gold)']].map(([label, val, color]) => (
@@ -171,6 +195,15 @@ export default function WorkerDashboard() {
                   ))}
                 </div>
               )}
+              {tab === 'all' && demandsTotalPages > 1 && (
+                <Pagination
+                  page={demandsPage}
+                  totalPages={demandsTotalPages}
+                  total={demandsTotal}
+                  limit={PAGE_LIMIT}
+                  onPageChange={p => load(p)}
+                />
+              )}
             </>
           )}
 
@@ -180,6 +213,11 @@ export default function WorkerDashboard() {
               loading={nurseLoading}
               onRefresh={loadNurse}
               isMobile={isMobile}
+              page={nursePage}
+              totalPages={nurseTotalPages}
+              total={nurseTotal}
+              limit={PAGE_LIMIT}
+              onPageChange={p => loadNurse(p)}
             />
           )}
         </main>
@@ -208,7 +246,7 @@ export default function WorkerDashboard() {
   );
 }
 
-function NurseTab({ requests, loading, onRefresh, isMobile }) {
+function NurseTab({ requests, loading, onRefresh, isMobile, page, totalPages, total, limit, onPageChange }) {
   const [updatingId, setUpdatingId] = useState(null);
 
   const handleStatus = async (id, status) => {
@@ -305,6 +343,15 @@ function NurseTab({ requests, loading, onRefresh, isMobile }) {
             );
           })}
         </div>
+      )}
+      {totalPages > 1 && (
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          limit={limit}
+          onPageChange={onPageChange}
+        />
       )}
     </div>
   );

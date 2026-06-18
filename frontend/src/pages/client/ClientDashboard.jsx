@@ -173,7 +173,7 @@ function DashboardTab({ setTab, isMobile }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    demandsAPI.list().then(r => setDemands(r.data)).catch(() => {}).finally(() => setLoading(false));
+    demandsAPI.list(1, 5).then(r => setDemands(r.data.data)).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const stats = {
@@ -254,7 +254,7 @@ function HistoryTab({ isMobile }) {
 
   const load = () => {
     setLoading(true);
-    demandsAPI.list().then(r => setDemands(r.data)).catch(() => {}).finally(() => setLoading(false));
+    demandsAPI.list(1, 100).then(r => setDemands(r.data.data)).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
