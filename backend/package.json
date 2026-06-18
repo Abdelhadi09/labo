@@ -8,6 +8,7 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "helmet": "^8.0.0",
     "@supabase/supabase-js": "^2.105.4",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",

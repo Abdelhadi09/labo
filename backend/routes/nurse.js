@@ -30,7 +30,7 @@ router.post('/', authenticate, requireRole('client'), async (req, res) => {
       .eq('demand_id', demand_id).maybeSingle();
 
     if (existing)
-      return res.status(409).json({ error: 'Une demande d\'infirmière existe déjà pour cette analyse' });
+      return res.status(409).json({ error: "Une demande d'infirmière existe déjà pour cette analyse" });
 
     const { data, error } = await supabase
       .from('nurse_requests')
@@ -39,28 +39,36 @@ router.post('/', authenticate, requireRole('client'), async (req, res) => {
       .select('id').single();
 
     if (error) throw error;
-    res.status(201).json({ id: data.id, message: 'Demande d\'infirmière soumise avec succès' });
+    res.status(201).json({ id: data.id, message: "Demande d'infirmière soumise avec succès" });
   } catch (err) {
     console.error('Nurse request error:', err);
     res.status(500).json({ error: 'Erreur lors de la soumission' });
   }
 });
 
-// GET /api/nurse — worker sees all nurse requests
+// GET /api/nurse — worker sees nurse requests (paginated)
+// Query params: page (1-based, default 1), limit (default 20, max 100)
 router.get('/', authenticate, requireRole('worker'), async (req, res) => {
   try {
+    const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const from  = (page - 1) * limit;
+    const to    = from + limit - 1;
+
     const supabase = getPool();
 
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from('nurse_requests')
-      .select(`
-        *,
-        demands(id, ordonnance_type, total_price, status,
-          demand_items(price, analysis_services(name)),
-          users(username, client_profiles(first_name, last_name))
-        )
-      `)
-      .order('created_at', { ascending: false });
+      .select(
+        `*,
+         demands(id, ordonnance_type, total_price, status,
+           demand_items(price, analysis_services(name)),
+           users(username, client_profiles(first_name, last_name))
+         )`,
+        { count: 'exact' }
+      )
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
     if (error) throw error;
 
@@ -74,7 +82,13 @@ router.get('/', authenticate, requireRole('worker'), async (req, res) => {
       analyses:     (r.demands?.demand_items || []).map(i => i.analysis_services?.name).filter(Boolean),
     }));
 
-    res.json(result);
+    res.json({
+      data:        result,
+      total:       count ?? 0,
+      page,
+      limit,
+      total_pages: Math.ceil((count ?? 0) / limit),
+    });
   } catch (err) {
     console.error('Get nurse requests error:', err);
     res.status(500).json({ error: 'Erreur lors de la récupération' });

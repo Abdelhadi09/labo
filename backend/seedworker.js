@@ -12,10 +12,7 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
-const workers = [
-  { username: 'ikram',  password: '07072000' },
-  { username: 'test',   password: 'testtest' },
-];
+
 
 (async () => {
   for (const w of workers) {

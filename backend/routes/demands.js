@@ -9,6 +9,16 @@ const { extractTextFromImage, matchServicesFromText } = require('../services/ocr
 
 const router = express.Router();
 
+// Normalize the nested demand_items rows returned by Supabase relational select.
+const mapItems = (rows) =>
+  (rows || []).map(i => ({
+    id:         i.id,
+    price:      i.price,
+    service_id: i.analysis_services?.id,
+    name:       i.analysis_services?.name,
+    code:       i.analysis_services?.code,
+  }));
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
@@ -111,7 +121,7 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       message: ordonnance_type === 'ocr'
         ? matchedServices.length > 0
           ? `Trouvé ${matchedServices.length} analyse(s). Total: ${totalPrice} DA`
-          : 'Aucune analyse reconnue. Un technicien va examiner l\'ordonnance.'
+          : "Aucune analyse reconnue. Un technicien va examiner l'ordonnance."
         : 'Ordonnance soumise. Un technicien la traitera sous peu.',
     });
   } catch (err) {
@@ -121,49 +131,61 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
 });
 
 // ─── GET /api/demands ─────────────────────────────────────────────────────────
+// Query params: page (1-based, default 1), limit (default 20, max 100)
 router.get('/', authenticate, async (req, res) => {
   try {
+    const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+    const from  = (page - 1) * limit;
+    const to    = from + limit - 1;
+
     const supabase = getPool();
-    let demands;
+    let query;
 
-   if (req.user.role === 'worker') {
-  const { data, error } = await supabase
-    .from('demands')
-    .select(`*, users(username, client_profiles(first_name, last_name, birthday, address))`)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  demands = (data || []).map(d => ({
-    ...d,
-    username:   d.users?.username,
-    first_name: d.users?.client_profiles?.[0]?.first_name,
-    last_name:  d.users?.client_profiles?.[0]?.last_name,
-    birthday:   d.users?.client_profiles?.[0]?.birthday,
-    address:    d.users?.client_profiles?.[0]?.address,
-  }));
+    if (req.user.role === 'worker') {
+      query = supabase
+        .from('demands')
+        .select(
+          `*, demand_items(id, price, analysis_services(id, name, code)),
+           users(username, client_profiles(first_name, last_name, birthday, address))`,
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false })
+        .range(from, to);
     } else {
-      const { data, error } = await supabase
-        .from('demands').select('*')
+      query = supabase
+        .from('demands')
+        .select('*, demand_items(id, price, analysis_services(id, name, code))', { count: 'exact' })
         .eq('client_id', req.user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      demands = data || [];
+        .order('created_at', { ascending: false })
+        .range(from, to);
     }
 
-    // Attach items to each demand
-    for (const demand of demands) {
-      const { data: items } = await supabase
-        .from('demand_items')
-        .select('id, price, analysis_services(id, name, code)')
-        .eq('demand_id', demand.id);
-      demand.items = (items || []).map(i => ({
-        id: i.id, price: i.price,
-        service_id: i.analysis_services?.id,
-        name: i.analysis_services?.name,
-        code: i.analysis_services?.code,
+    const { data, error, count } = await query;
+    if (error) throw error;
+
+    let demands;
+    if (req.user.role === 'worker') {
+      demands = (data || []).map(d => ({
+        ...d,
+        username:   d.users?.username,
+        first_name: d.users?.client_profiles?.[0]?.first_name,
+        last_name:  d.users?.client_profiles?.[0]?.last_name,
+        birthday:   d.users?.client_profiles?.[0]?.birthday,
+        address:    d.users?.client_profiles?.[0]?.address,
+        items:      mapItems(d.demand_items),
       }));
+    } else {
+      demands = (data || []).map(d => ({ ...d, items: mapItems(d.demand_items) }));
     }
 
-    res.json(demands);
+    res.json({
+      data:        demands,
+      total:       count ?? 0,
+      page,
+      limit,
+      total_pages: Math.ceil((count ?? 0) / limit),
+    });
   } catch (err) {
     console.error('Get demands error:', err);
     res.status(500).json({ error: 'Failed to fetch demands' });
@@ -178,36 +200,26 @@ router.get('/:id', authenticate, async (req, res) => {
 
     if (req.user.role === 'worker') {
       const { data, error } = await supabase
-  .from('demands')
-  .select(`*, users(username), client_profiles(first_name, last_name, birthday, address)`)
-  .eq('id', req.params.id).single();
-if (error || !data) return res.status(404).json({ error: 'Demand not found' });
-demand = {
-  ...data,
-  username:   data.users?.username,
-  first_name: data.client_profiles?.first_name,
-  last_name:  data.client_profiles?.last_name,
-  birthday:   data.client_profiles?.birthday,
-  address:    data.client_profiles?.address,
-};
+        .from('demands')
+        .select(`*, demand_items(id, price, analysis_services(id, name, code)), users(username), client_profiles(first_name, last_name, birthday, address)`)
+        .eq('id', req.params.id).single();
+      if (error || !data) return res.status(404).json({ error: 'Demand not found' });
+      demand = {
+        ...data,
+        username:   data.users?.username,
+        first_name: data.client_profiles?.first_name,
+        last_name:  data.client_profiles?.last_name,
+        birthday:   data.client_profiles?.birthday,
+        address:    data.client_profiles?.address,
+        items:      mapItems(data.demand_items),
+      };
     } else {
       const { data, error } = await supabase
-        .from('demands').select('*')
+        .from('demands').select('*, demand_items(id, price, analysis_services(id, name, code))')
         .eq('id', req.params.id).eq('client_id', req.user.id).single();
       if (error || !data) return res.status(404).json({ error: 'Demand not found' });
-      demand = data;
+      demand = { ...data, items: mapItems(data.demand_items) };
     }
-
-    const { data: items } = await supabase
-      .from('demand_items')
-      .select('id, price, analysis_services(id, name, code)')
-      .eq('demand_id', demand.id);
-    demand.items = (items || []).map(i => ({
-      id: i.id, price: i.price,
-      service_id: i.analysis_services?.id,
-      name: i.analysis_services?.name,
-      code: i.analysis_services?.code,
-    }));
 
     res.json(demand);
   } catch (err) {
