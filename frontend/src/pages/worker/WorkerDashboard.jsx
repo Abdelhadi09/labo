@@ -136,7 +136,7 @@ export default function WorkerDashboard() {
   ];
 
   const list = tab === 'pending' ? pending : tab === 'processed' ? processed : demands;
-
+const activeIndex = tabs.findIndex(t => t.id === tab);
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)', paddingBottom: isMobile ? 72 : 0 }}>
       <Navbar role="worker" />
@@ -249,6 +249,14 @@ export default function WorkerDashboard() {
 
       {isMobile && (
         <nav style={styles.bottomNav}>
+        <div style={styles.glassShine} />
+         <div
+    style={{
+      ...styles.activePill,
+     width: `calc((100% - 12px) / ${tabs.length})`,
+  transform: `translateX(calc(${activeIndex} * 100%))`,
+    }}
+  />
           {tabs.map(({ id, label, count, urgent }) => (
             <button key={id}
               style={{ ...styles.bottomItem, ...(tab === id ? styles.bottomActive : {}) }}
@@ -599,49 +607,83 @@ const styles = {
   left: 16,
   right: 16,
 
-  height: 64,
-  background: 'rgba(255,255,255,0.95)',
-  backdropFilter: 'blur(20px)',
+  height: 68,
+
+  background:
+    'linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.16) 100%)',
+
+  backdropFilter: 'blur(24px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(24px) saturate(180%)',
 
   borderRadius: 999,
-  border: '1px solid rgba(0,0,0,0.05)',
 
-  boxShadow:
-    '0 8px 30px rgba(13,27,42,0.12), 0 2px 8px rgba(13,27,42,0.08)',
+  border: '1px solid rgba(255,255,255,0.35)',
+
+  boxShadow: `
+    inset 0 1px 0 rgba(255,255,255,0.8),
+    inset 0 -1px 0 rgba(255,255,255,0.15),
+    0 8px 32px rgba(0,0,0,0.12),
+    0 2px 8px rgba(0,0,0,0.08)
+  `,
 
   display: 'flex',
   alignItems: 'center',
   padding: 6,
 
+  overflow: 'hidden',
   zIndex: 200,
+},
+
+glassShine: {
+  position: 'absolute',
+  top: '-50%',
+  left: '-20%',
+  width: '140%',
+  height: '200%',
+
+  background:
+    'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%)',
+
+  transform: 'rotate(-8deg)',
+  pointerEvents: 'none',
+},
+activePill: {
+  position: 'absolute',
+  top: 6,
+  left: 6,                          // anchor here
+  height: 'calc(100% - 12px)',   // compute this dynamically in JSX
+  borderRadius: 999,
+  background: 'rgba(255,255,255,0.30)',
+  backdropFilter: 'blur(12px)',
+  border: '1px solid rgba(255,255,255,0.45)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 16px rgba(0,0,0,0.08)',
+  transition: 'transform 400ms cubic-bezier(.34,1.56,.64,1)',
+  zIndex: 0,
 },
 
 bottomItem: {
   flex: 1,
-  height: '100%',
+  position: 'relative',
+  zIndex: 2,
 
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 2,
 
   background: 'transparent',
   border: 'none',
-  borderRadius: 999,
 
-  color: 'var(--text-muted)',
-  cursor: 'pointer',
-  position: 'relative',
-
-  transition: 'all 0.25s ease',
-  WebkitTapHighlightColor: 'transparent',
+  transition: 'color 250ms ease',
 },
 
 bottomActive: {
-  background: 'var(--teal)',
-  color: '#fff',
-  boxShadow: '0 4px 12px rgba(0, 180, 180, 0.25)',
+ 
+
+  color: 'var(--teal)',
+
+
+
 },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
   modal: { background: 'white', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)' },
