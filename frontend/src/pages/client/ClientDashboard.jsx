@@ -31,7 +31,7 @@ function isProcessed(status) {
 }
 
 export default function ClientDashboard() {
-  const [tab, setTab] = useState('dashboard');
+  const [tab, setTab] = useState('history');
   const [hasProfile, setHasProfile] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const isMobile = useIsMobile();
