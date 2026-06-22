@@ -368,6 +368,7 @@ function HistoryTab({ isMobile }) {
       </div>
 
       {nurseModal && (
+       
         <NurseRequestModal
           demand={nurseModal}
           onClose={() => setNurseModal(null)}

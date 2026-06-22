@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { nurseAPI, profileAPI } from '../services/api';
 import MapPicker from './MapPicker';
 import Stepper, { Step } from './Stepper';
@@ -50,21 +51,19 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
     }
   };
 
-  return (
-    <div
-      style={{
-        ...styles.overlay,
-        // On mobile: slide up from bottom like a sheet, not centered
-        alignItems: isMobile ? 'flex-start' : 'flex-start',
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
+  const modalContent = (
+    <div style={styles.overlay}>
       <div
         style={{
           ...styles.modal,
-          // On mobile: full width, rounded only at top, max 90% of screen height
+          // On mobile: act as bottom sheet; on desktop center inside overlay
+          position: isMobile ? 'fixed' : 'relative',
+          bottom: isMobile ? 0 : 'auto',
+          left: isMobile ? 0 : 'auto',
+          right: isMobile ? 0 : 'auto',
+          // On mobile keep rounded top corners, on desktop use full radius
           borderRadius: isMobile ? '20px 20px 0 0' : 'var(--radius-lg)',
-          maxHeight: isMobile ? '90dvh' : '92vh', // dvh accounts for mobile browser chrome
+          maxHeight: isMobile ? '90dvh' : '92vh',
           width: '100%',
           maxWidth: isMobile ? '100%' : 520,
         }}
@@ -100,10 +99,13 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
           {/* ── Step 1 : Résumé ── */}
           <Step>
             <div style={styles.stepBody}>
+              <div style={{ display: 'flex', alignItems: 'center' , gap: 8, marginBottom: 6 }}>
               <div style={styles.stepIcon}>
                 <FlaskConical size={20} color="var(--teal)" />
+                 
               </div>
               <h4 style={styles.stepTitle}>Analyses concernées</h4>
+             </div>
               <div style={styles.demandSummary}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <span style={styles.summaryLabel}>Votre demande</span>
@@ -203,26 +205,23 @@ export default function NurseRequestModal({ demand, onClose, onSuccess }) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
 
 const styles = {
   overlay: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)',
-    display: 'flex', justifyContent: 'center',
-    zIndex: 1000,alignItems : 'flex-start', padding: 12,overflowY: 'auto',
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000, padding: 16,
   },
-  // On mobile, the modal is full width and slides up from bottom, not centered
+ 
+ 
   modal: {
     background: 'white', overflow: 'auto', boxShadow: 'var(--shadow-lg)',
-    position: 'relative', 
-
-  },
-  modal: {
-    background: 'white',
-    overflow: 'auto',
-    boxShadow: 'var(--shadow-lg)',
-    position: 'relative',
+    maxHeight: '90dvh',
+    borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 520,
+    display: 'flex', flexDirection: 'column',
   },
   header: {
     display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
