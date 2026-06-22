@@ -48,9 +48,10 @@ export default function ClientDashboard() {
   }, []);
 
   const tabs = [
-    { id: 'dashboard', label: 'Accueil',   Icon: LayoutDashboard },
+    // { id: 'dashboard', label: 'Accueil',   Icon: LayoutDashboard },
+     { id: 'history',   label: 'Demandes',  Icon: FileText },
     { id: 'upload',    label: 'Soumettre', Icon: Upload },
-    { id: 'history',   label: 'Demandes',  Icon: FileText },
+   
     { id: 'profile',   label: 'Profil',    Icon: User },
   ];
 const activeIndex = tabs.findIndex(t => t.id === tab);
@@ -117,9 +118,6 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
 
           {tab === 'upload' && hasProfile && (
             <div className="card">
-              <div className="card-header">
-                <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Soumettre une ordonnance</h2>
-              </div>
               <div className="card-body">
                 <OrdonnanceUpload onSuccess={() => setTab('history')} />
               </div>
@@ -130,10 +128,6 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
 
           {tab === 'profile' && (
             <div className="card">
-              <div className="card-header">
-                <h2 style={{ margin: 0, fontSize: '1.2rem' }}>Mon profil</h2>
-                {!hasProfile && <span style={styles.requiredBadge}>Requis</span>}
-              </div>
               <div className="card-body">
                 {!hasProfile && (
                   <div className="alert alert-info" style={{ marginBottom: 20 }}>
