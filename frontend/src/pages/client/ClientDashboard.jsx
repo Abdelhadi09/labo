@@ -5,6 +5,7 @@ import OrdonnanceUpload from '../../components/OrdonnanceUpload';
 import StatusBadge from '../../components/StatusBadge';
 import NurseRequestModal from '../../components/NurseRequestModal';
 import { demandsAPI, profileAPI } from '../../services/api';
+import { supabase } from '../../services/supabaseClient';
 import { LayoutDashboard, User, Upload, FileText, RefreshCw, DollarSign, FlaskConical, Stethoscope } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -172,8 +173,18 @@ function DashboardTab({ setTab, isMobile }) {
   const [demands, setDemands] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = () => {
     demandsAPI.list(1, 5).then(r => setDemands(r.data.data)).catch(() => {}).finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('client-dashboard-demands')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'demands' }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const stats = {
@@ -257,6 +268,14 @@ function HistoryTab({ isMobile }) {
     demandsAPI.list(1, 100).then(r => setDemands(r.data.data)).catch(() => {}).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('client-history-demands')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'demands' }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const handleNurseSuccess = (demandId) => {
     setNurseModal(null);

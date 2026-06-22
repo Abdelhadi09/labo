@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../../components/Navbar';
 import StatusBadge from '../../components/StatusBadge';
 import Pagination from '../../components/Pagination';
 import { demandsAPI, servicesAPI, nurseAPI } from '../../services/api';
+import { supabase } from '../../services/supabaseClient';
 import {
   FileText, RefreshCw, CheckCircle, Clock,
   ChevronRight, X, DollarSign, Scan, PenLine,
@@ -96,6 +97,29 @@ export default function WorkerDashboard() {
     document.body.style.overflow = selected ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [selected]);
+
+  // Refs so realtime callbacks always read the current page without re-subscribing
+  const demandsPageRef = useRef(demandsPage);
+  useEffect(() => { demandsPageRef.current = demandsPage; }, [demandsPage]);
+  const nursePageRef = useRef(nursePage);
+  useEffect(() => { nursePageRef.current = nursePage; }, [nursePage]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('worker-demands')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'demands' }, () => load(demandsPageRef.current))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  useEffect(() => {
+    if (tab !== 'nurse') return;
+    const channel = supabase
+      .channel('worker-nurse-requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'nurse_requests' }, () => loadNurse(nursePageRef.current))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [tab]);
 
   const pending   = demands.filter(d => d.status === 'pending' || d.status === 'ocr_no_match');
   const processed = demands.filter(d => ['ocr_processed','processed'].includes(d.status));
