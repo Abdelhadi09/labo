@@ -1,20 +1,30 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { body } = require('express-validator');
 const { getPool } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 
 const router = express.Router();
+
+const workerLoginValidation = [
+  body('username')
+    .trim()
+    .notEmpty().withMessage('Username and password are required')
+    .isLength({ max: 100 }).withMessage('Username must be 100 characters or fewer'),
+  body('password')
+    .notEmpty().withMessage('Username and password are required')
+    .isLength({ max: 200 }).withMessage('Password must be 200 characters or fewer'),
+];
 
 /**
  * WORKER LOGIN — username + password → our custom JWT
  * POST /api/auth/worker/login
  */
-router.post('/worker/login', async (req, res) => {
+router.post('/worker/login', workerLoginValidation, validate, async (req, res) => {
   try {
     const { username, password } = req.body;
-    if (!username || !password)
-      return res.status(400).json({ error: 'Username and password are required' });
 
     const supabase = getPool();
     const { data: user, error } = await supabase
@@ -50,11 +60,16 @@ router.post('/worker/login', async (req, res) => {
  * Body: { supabase_access_token }
  * Returns our own enriched user object (creates DB record if first login)
  */
-router.post('/client/session', async (req, res) => {
+const clientSessionValidation = [
+  body('supabase_access_token')
+    .trim()
+    .notEmpty().withMessage('supabase_access_token required')
+    .isLength({ max: 4096 }).withMessage('supabase_access_token is too long'),
+];
+
+router.post('/client/session', clientSessionValidation, validate, async (req, res) => {
   try {
     const { supabase_access_token } = req.body;
-    if (!supabase_access_token)
-      return res.status(400).json({ error: 'supabase_access_token required' });
 
     const supabase = getPool();
 

@@ -1,9 +1,11 @@
 const express = require('express');
 const multer = require('multer');
+const { body, param, query } = require('express-validator');
 const { getPool } = require('../config/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { validateImageFile } = require('../middleware/fileValidation');
+const { validate } = require('../middleware/validate');
 const { uploadOrdonnance } = require('../services/blobStorage');
 const { extractTextFromImage, matchServicesFromText } = require('../services/ocrService');
 
@@ -29,12 +31,38 @@ const upload = multer({
 });
 
 // ─── POST /api/demands ────────────────────────────────────────────────────────
-router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.single('ordonnance'), validateImageFile, async (req, res) => {
+const createDemandValidation = [
+  body('ordonnance_type')
+    .trim()
+    .isIn(['ocr', 'handwritten', 'manual']).withMessage('ordonnance_type must be "ocr", "handwritten" or "manual"'),
+
+  // service_ids arrives either as a real array (application/json) or as a
+  // JSON-encoded string (multipart form field). Validate format here; the
+  // route handler still does the authoritative per-id DB lookup.
+  body('service_ids')
+    .optional()
+    .custom((value) => {
+      let ids = value;
+      if (typeof value === 'string') {
+        try {
+          ids = JSON.parse(value);
+        } catch {
+          throw new Error('service_ids must be a valid JSON array');
+        }
+      }
+      if (!Array.isArray(ids) || ids.length === 0)
+        throw new Error('service_ids must be a non-empty array');
+      if (ids.length > 50)
+        throw new Error('service_ids cannot contain more than 50 items');
+      if (!ids.every(id => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))
+        throw new Error('service_ids must contain only valid UUIDs');
+      return true;
+    }),
+];
+
+router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.single('ordonnance'), validateImageFile, createDemandValidation, validate, async (req, res) => {
   try {
     const { ordonnance_type, service_ids } = req.body;
-
-    if (!['ocr','handwritten','manual'].includes(ordonnance_type))
-      return res.status(400).json({ error: 'ordonnance_type must be "ocr", "handwritten" or "manual"' });
 
     if (ordonnance_type !== 'manual' && !req.file)
       return res.status(400).json({ error: 'Ordonnance file is required' });
@@ -132,7 +160,12 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
 
 // ─── GET /api/demands ─────────────────────────────────────────────────────────
 // Query params: page (1-based, default 1), limit (default 20, max 100)
-router.get('/', authenticate, async (req, res) => {
+const listDemandsValidation = [
+  query('page').optional().isInt({ min: 1 }).withMessage('page must be a positive integer'),
+  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('limit must be between 1 and 100'),
+];
+
+router.get('/', authenticate, listDemandsValidation, validate, async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
@@ -193,7 +226,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // ─── GET /api/demands/:id ─────────────────────────────────────────────────────
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, param('id').isUUID().withMessage('id must be a valid UUID'), validate, async (req, res) => {
   try {
     const supabase = getPool();
     let demand;
@@ -229,11 +262,21 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // ─── PUT /api/demands/:id/process ─────────────────────────────────────────────
-router.put('/:id/process', authenticate, requireRole('worker'), async (req, res) => {
+const processDemandValidation = [
+  param('id').isUUID().withMessage('id must be a valid UUID'),
+  body('service_ids')
+    .isArray({ min: 1, max: 50 }).withMessage('service_ids array is required (1-50 items)'),
+  body('service_ids.*')
+    .isUUID().withMessage('Each service id must be a valid UUID'),
+  body('notes')
+    .optional({ nullable: true, checkFalsy: true })
+    .trim()
+    .isLength({ max: 1000 }).withMessage('notes must be 1000 characters or fewer'),
+];
+
+router.put('/:id/process', authenticate, requireRole('worker'), processDemandValidation, validate, async (req, res) => {
   try {
     const { service_ids, notes } = req.body;
-    if (!service_ids || !Array.isArray(service_ids) || service_ids.length === 0)
-      return res.status(400).json({ error: 'service_ids array is required' });
 
     const supabase = getPool();
 

@@ -1,15 +1,45 @@
 const express = require('express');
+const { body, param } = require('express-validator');
 const { getPool } = require('../config/database');
 const { authenticate, requireRole } = require('../middleware/auth');
+const { validate } = require('../middleware/validate');
 
 const router = express.Router();
 
+// Algerian-style or generic international phone numbers: optional leading +,
+// 8-15 digits, allowing spaces/dashes/parens for readability.
+const PHONE_REGEX = /^\+?[0-9\s().-]{8,20}$/;
+
+const nurseRequestValidation = [
+  body('demand_id')
+    .trim()
+    .notEmpty().withMessage('demand_id is required')
+    .isUUID().withMessage('demand_id must be a valid UUID'),
+
+  body('phone')
+    .trim()
+    .notEmpty().withMessage('Phone is required')
+    .isLength({ max: 20 }).withMessage('Phone must be 20 characters or fewer')
+    .matches(PHONE_REGEX).withMessage('Phone number format is invalid'),
+
+  body('address')
+    .trim()
+    .notEmpty().withMessage('Address is required')
+    .isLength({ max: 500 }).withMessage('Address must be 500 characters or fewer'),
+
+  body('address_lat')
+    .optional({ nullable: true, checkFalsy: true })
+    .isFloat({ min: -90, max: 90 }).withMessage('address_lat must be between -90 and 90'),
+
+  body('address_lng')
+    .optional({ nullable: true, checkFalsy: true })
+    .isFloat({ min: -180, max: 180 }).withMessage('address_lng must be between -180 and 180'),
+];
+
 // POST /api/nurse — client requests a nurse visit
-router.post('/', authenticate, requireRole('client'), async (req, res) => {
+router.post('/', authenticate, requireRole('client'), nurseRequestValidation, validate, async (req, res) => {
   try {
     const { demand_id, phone, address, address_lat, address_lng } = req.body;
-    if (!demand_id || !phone || !address)
-      return res.status(400).json({ error: 'demand_id, phone and address are required' });
 
     const supabase = getPool();
 
@@ -96,11 +126,16 @@ router.get('/', authenticate, requireRole('worker'), async (req, res) => {
 });
 
 // PUT /api/nurse/:id/status — worker updates status
-router.put('/:id/status', authenticate, requireRole('worker'), async (req, res) => {
+const nurseStatusValidation = [
+  param('id').isUUID().withMessage('id must be a valid UUID'),
+  body('status')
+    .trim()
+    .isIn(['pending', 'confirmed', 'done']).withMessage('Status invalide'),
+];
+
+router.put('/:id/status', authenticate, requireRole('worker'), nurseStatusValidation, validate, async (req, res) => {
   try {
     const { status } = req.body;
-    if (!['pending', 'confirmed', 'done'].includes(status))
-      return res.status(400).json({ error: 'Status invalide' });
 
     const supabase = getPool();
     const { error } = await supabase
