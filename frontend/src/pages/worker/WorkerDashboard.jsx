@@ -7,7 +7,7 @@ import { supabase } from '../../services/supabaseClient';
 import {
   FileText, RefreshCw, CheckCircle, Clock,
   ChevronRight, X, DollarSign, Scan, PenLine,
-  AlertCircle, FlaskConical, FileImage, ListChecks, Stethoscope, MapPin, Phone, Search
+  AlertCircle, FlaskConical, ListChecks, Stethoscope, MapPin, Phone, Search, CalendarDays
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -30,6 +30,33 @@ function highlight(text, query) {
   return <>{text.slice(0, idx)}<mark style={{ background: 'rgba(10,147,150,0.18)', color: 'inherit', borderRadius: 2, padding: '0 2px' }}>{text.slice(idx, idx + word.length)}</mark>{text.slice(idx + word.length)}</>;
 }
 
+/* ── Filter helpers ── */
+function getClientName(item) {
+  if (item.first_name && item.last_name) return `${item.first_name} ${item.last_name}`;
+  return item.username || '';
+}
+function applyFilters(items, nameFilter, dateFilter) {
+  return items.filter(item => {
+    // Name filter (accent-insensitive)
+    if (nameFilter.trim()) {
+      const name = normalize(getClientName(item));
+      const q = normalize(nameFilter.trim());
+      if (!q.split(/\s+/).every(w => name.includes(w))) return false;
+    }
+    // Single date filter — show only items created on that exact day
+    if (dateFilter) {
+      const d = new Date(item.created_at);
+      const t = new Date(dateFilter);
+      if (
+        d.getFullYear() !== t.getFullYear() ||
+        d.getMonth()    !== t.getMonth()    ||
+        d.getDate()     !== t.getDate()
+      ) return false;
+    }
+    return true;
+  });
+}
+
 function useIsMobile() {
   const [v, setV] = useState(window.innerWidth <= 768);
   useEffect(() => {
@@ -49,8 +76,105 @@ function typeLabel(type) {
 const NURSE_STATUS = {
   pending:   { label: 'En attente', color: '#92400e', bg: '#fef3c7', border: '#fcd34d' },
   confirmed: { label: 'Confirmée',  color: '#065f46', bg: '#d1fae5', border: '#6ee7b7' },
-  done:      { label: 'Effectuée', color: '#1e40af', bg: '#dbeafe', border: '#93c5fd' },
+  done:      { label: 'Effectuée',  color: '#1e40af', bg: '#dbeafe', border: '#93c5fd' },
 };
+
+/* ── Filter Bar ── */
+function FilterBar({ nameFilter, setNameFilter, dateFilter, setDateFilter, isMobile }) {
+  const [showDateOnMobile, setShowDateOnMobile] = useState(false);
+  const hasFilters = nameFilter.trim() || dateFilter;
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.12) 100%)',
+      backdropFilter: 'blur(16px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+      padding: '3px 6px',
+      marginBottom: 14,
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      gap: 10,
+      alignItems: isMobile ? 'stretch' : 'center',
+      border: hasFilters ? '1.5px solid rgba(10,147,150,0.4)' : '1.5px solid rgba(255,255,255,0.3)',
+    borderRadius: '24px',
+      transition: 'all 0.3s ease',
+      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.6), 0 4px 16px rgba(0,0,0,0.08)',
+    }}>
+      {/* Name search with calendar icon on mobile */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.12) 100%)',
+      backdropFilter: 'blur(16px) saturate(180%)',
+      WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+        ...styles.filterField,
+        ...(isMobile && { position: 'relative' })
+      }}>
+        <Search size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+        <input
+          type="text"
+          placeholder="Rechercher par nom…"
+          value={nameFilter}
+          onChange={e => setNameFilter(e.target.value)}
+          style={styles.filterInput}
+        />
+        {nameFilter && (
+          <button onClick={() => setNameFilter('')} style={styles.filterClearBtn} title="Effacer">
+            <X size={14} />
+          </button>
+        )}
+        {isMobile && (
+          <button
+            onClick={() => setShowDateOnMobile(!showDateOnMobile)}
+            style={{
+              ...styles.filterClearBtn,
+              color: showDateOnMobile || dateFilter ? 'var(--teal)' : 'var(--text-muted)',
+              transition: 'color 0.2s',
+            }}
+            title="Filtrer par date"
+          >
+            <CalendarDays size={16} />
+          </button>
+        )}
+      </div>
+
+      {!isMobile && <div style={{ width: 1, height: 26, background: 'var(--border)', flexShrink: 0 }} />}
+
+      {/* Single date filter - hidden on mobile by default */}
+      {(!isMobile || showDateOnMobile) && (
+        <div style={{ ...styles.filterField, flex: '0 0 auto' }}>
+          {!isMobile && <CalendarDays size={18} color="var(--text-muted)" style={{ flexShrink: 0 }} />}
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={e => setDateFilter(e.target.value)}
+            style={{ ...styles.filterInput, colorScheme: 'light', minWidth: 140 }}
+          />
+          {dateFilter && (
+            <button onClick={() => setDateFilter('')} style={styles.filterClearBtn} title="Effacer">
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Reset button */}
+      {hasFilters && (
+        <button
+          onClick={() => { setNameFilter(''); setDateFilter(''); }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px', borderRadius: '24px',
+            border: '1.5px solid var(--coral)', background: 'rgba(239,68,68,0.06)',
+            color: 'var(--coral)', fontSize: '0.78rem', fontWeight: 600,
+            cursor: 'pointer', fontFamily: 'var(--font-body)',
+            flexShrink: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          <X size={12} /> Réinitialiser
+        </button>
+      )}
+  </div> 
+  );
+}
 
 export default function WorkerDashboard() {
   const PAGE_LIMIT = 10;
@@ -66,6 +190,10 @@ export default function WorkerDashboard() {
   const [nursePage, setNursePage] = useState(1);
   const [nurseLoading, setNurseLoading] = useState(false);
   const isMobile = useIsMobile();
+
+  // ── Shared filter state across all tabs ──
+  const [nameFilter, setNameFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
 
   const load = (page = demandsPage) => {
     setLoading(true);
@@ -98,7 +226,6 @@ export default function WorkerDashboard() {
     return () => { document.body.style.overflow = ''; };
   }, [selected]);
 
-  // Refs so realtime callbacks always read the current page without re-subscribing
   const demandsPageRef = useRef(demandsPage);
   useEffect(() => { demandsPageRef.current = demandsPage; }, [demandsPage]);
   const nursePageRef = useRef(nursePage);
@@ -122,21 +249,29 @@ export default function WorkerDashboard() {
   }, [tab]);
 
   const pending   = demands.filter(d => d.status === 'pending' || d.status === 'ocr_no_match');
-  const processed = demands.filter(d => ['ocr_processed','processed'].includes(d.status));
+  const processed = demands.filter(d => ['ocr_processed', 'processed'].includes(d.status));
   const nurseCount = nurseRequests.filter(r => r.status === 'pending').length;
 
   const demandsTotalPages = Math.ceil(demandsTotal / PAGE_LIMIT);
   const nurseTotalPages   = Math.ceil(nurseTotal   / PAGE_LIMIT);
 
   const tabs = [
-    { id: 'all',       label: 'Toutes',    count: demandsTotal },
-    { id: 'pending',   label: 'À traiter', count: pending.length,   urgent: true },
-    { id: 'processed', label: 'Traitées',  count: processed.length },
+    { id: 'all',       label: 'Toutes',     count: demandsTotal },
+    { id: 'pending',   label: 'À traiter',  count: pending.length,  urgent: true },
+    { id: 'processed', label: 'Traitées',   count: processed.length },
     { id: 'nurse',     label: 'Infirmière', count: nurseCount, urgent: nurseCount > 0, icon: <Stethoscope size={14} /> },
   ];
 
-  const list = tab === 'pending' ? pending : tab === 'processed' ? processed : demands;
-const activeIndex = tabs.findIndex(t => t.id === tab);
+  const baseList        = tab === 'pending' ? pending : tab === 'processed' ? processed : demands;
+  const filteredDemands = applyFilters(baseList, nameFilter, dateFilter);
+  const filteredNurse   = applyFilters(nurseRequests, nameFilter, dateFilter);
+  const hasFilters      = nameFilter.trim() || dateFilter;
+
+  const filterBarProps = { nameFilter, setNameFilter, dateFilter, setDateFilter, isMobile };
+  const clearFilters   = () => { setNameFilter(''); setDateFilter(''); };
+
+  const activeIndex = tabs.findIndex(t => t.id === tab);
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--cream)', paddingBottom: isMobile ? 72 : 0 }}>
       <Navbar role="worker" />
@@ -175,23 +310,6 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
         )}
 
         <main style={{ flex: 1, minWidth: 0 }} className="page-enter">
-          {/* {isMobile && (
-            <div style={{ display: 'flex', background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', padding: 4, marginBottom: 14, gap: 3, overflowX: 'auto' }}>
-              {tabs.map(({ id, label, count, urgent }) => (
-                <button key={id}
-                  style={{ ...styles.mobileTab, ...(tab === id ? styles.mobileTabActive : {}), flexShrink: 0 }}
-                  onClick={() => setTab(id)}>
-                  {label}
-                  {count > 0 && (
-                    <span style={{ ...styles.countBadge, background: urgent ? 'var(--coral)' : tab === id ? 'white' : 'var(--teal)', color: tab === id && !urgent ? 'var(--teal)' : 'white', marginLeft: 4 }}>
-                      {count}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )} */}
-
           {tab !== 'nurse' && (
             <>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
@@ -200,6 +318,8 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
                 </h2>
                 <button className="btn btn-secondary btn-sm" onClick={load}><RefreshCw size={13} /> Actualiser</button>
               </div>
+
+              <FilterBar {...filterBarProps} />
 
               {tab === 'pending' && pending.length > 0 && (
                 <div className="alert alert-warning" style={{ marginBottom: 14 }}>
@@ -210,16 +330,32 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
 
               {loading ? (
                 <div style={styles.center}><div className="spinner spinner-dark" /></div>
-              ) : list.length === 0 ? (
-                <div style={styles.empty}><FileText size={32} color="var(--text-muted)" /><p>Aucune demande</p></div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {list.map(d => (
-                    <DemandCard key={d.id} demand={d} onSelect={() => setSelected(d)} isMobile={isMobile} />
-                  ))}
+              ) : filteredDemands.length === 0 ? (
+                <div style={styles.empty}>
+                  <FileText size={32} color="var(--text-muted)" />
+                  <p>{hasFilters ? 'Aucun résultat pour ces filtres' : 'Aucune demande'}</p>
+                  {hasFilters && (
+                    <button className="btn btn-secondary btn-sm" onClick={clearFilters}>
+                      <X size={12} /> Effacer les filtres
+                    </button>
+                  )}
                 </div>
+              ) : (
+                <>
+                  {hasFilters && (
+                    <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      {filteredDemands.length} résultat{filteredDemands.length > 1 ? 's' : ''} affiché{filteredDemands.length > 1 ? 's' : ''}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {filteredDemands.map(d => (
+                      <DemandCard key={d.id} demand={d} onSelect={() => setSelected(d)} isMobile={isMobile} />
+                    ))}
+                  </div>
+                </>
               )}
-              {tab === 'all' && demandsTotalPages > 1 && (
+
+              {tab === 'all' && demandsTotalPages > 1 && !hasFilters && (
                 <Pagination
                   page={demandsPage}
                   totalPages={demandsTotalPages}
@@ -233,7 +369,7 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
 
           {tab === 'nurse' && (
             <NurseTab
-              requests={nurseRequests}
+              requests={filteredNurse}
               loading={nurseLoading}
               onRefresh={loadNurse}
               isMobile={isMobile}
@@ -242,6 +378,9 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
               total={nurseTotal}
               limit={PAGE_LIMIT}
               onPageChange={p => loadNurse(p)}
+              hasFilters={hasFilters}
+              filterBarProps={filterBarProps}
+              onClearFilters={clearFilters}
             />
           )}
         </main>
@@ -249,14 +388,14 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
 
       {isMobile && (
         <nav style={styles.bottomNav}>
-        <div style={styles.glassShine} />
-         <div
-    style={{
-      ...styles.activePill,
-     width: `calc((100% - 12px) / ${tabs.length})`,
-  transform: `translateX(calc(${activeIndex} * 100%))`,
-    }}
-  />
+          <div style={styles.glassShine} />
+          <div
+            style={{
+              ...styles.activePill,
+              width: `calc((100% - 12px) / ${tabs.length})`,
+              transform: `translateX(calc(${activeIndex} * 100%))`,
+            }}
+          />
           {tabs.map(({ id, label, count, urgent }) => (
             <button key={id}
               style={{ ...styles.bottomItem, ...(tab === id ? styles.bottomActive : {}) }}
@@ -278,7 +417,7 @@ const activeIndex = tabs.findIndex(t => t.id === tab);
   );
 }
 
-function NurseTab({ requests, loading, onRefresh, isMobile, page, totalPages, total, limit, onPageChange }) {
+function NurseTab({ requests, loading, onRefresh, isMobile, page, totalPages, total, limit, onPageChange, hasFilters, filterBarProps, onClearFilters }) {
   const [updatingId, setUpdatingId] = useState(null);
 
   const handleStatus = async (id, status) => {
@@ -302,88 +441,85 @@ function NurseTab({ requests, loading, onRefresh, isMobile, page, totalPages, to
         <button className="btn btn-secondary btn-sm" onClick={onRefresh}><RefreshCw size={13} /> Actualiser</button>
       </div>
 
+      <FilterBar {...filterBarProps} />
+
       {loading ? (
         <div style={styles.center}><div className="spinner spinner-dark" /></div>
       ) : requests.length === 0 ? (
         <div style={{ ...styles.empty, background: 'white', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}>
           <Stethoscope size={32} color="var(--text-muted)" />
-          <p>Aucune demande d'infirmière pour l'instant</p>
+          <p>{hasFilters ? 'Aucun résultat pour ces filtres' : "Aucune demande d'infirmière pour l'instant"}</p>
+          {hasFilters && (
+            <button className="btn btn-secondary btn-sm" onClick={onClearFilters}>
+              <X size={12} /> Effacer les filtres
+            </button>
+          )}
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {requests.map(r => {
-            const s = NURSE_STATUS[r.status] || NURSE_STATUS.pending;
-            return (
-              <div key={r.id} style={{ background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden', borderLeft: `4px solid ${r.status === 'pending' ? 'var(--coral)' : r.status === 'confirmed' ? 'var(--teal)' : 'var(--border)'}` }}>
-                <div style={{ padding: '14px 18px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 14 }}>
-                  {/* Client info */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--navy)' }}>
-                        {r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : r.username}
-                      </p>
-                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}`, flexShrink: 0 }}>
-                        {s.label}
-                      </span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-                      <Phone size={13} color="var(--teal)" />
-                      <a href={`tel:${r.phone}`} style={{ color: 'var(--teal)', fontWeight: 600 }}>{r.phone}</a>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
-                      <MapPin size={13} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
-                      <span>{r.address}</span>
-                    </div>
-
-                    {r.analyses?.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        <FlaskConical size={13} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
-                        <span>{r.analyses.join(' · ')}</span>
+        <>
+          {hasFilters && (
+            <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+              {requests.length} résultat{requests.length > 1 ? 's' : ''} affiché{requests.length > 1 ? 's' : ''}
+            </p>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {requests.map(r => {
+              const s = NURSE_STATUS[r.status] || NURSE_STATUS.pending;
+              return (
+                <div key={r.id} style={{ background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden', borderLeft: `4px solid ${r.status === 'pending' ? 'var(--coral)' : r.status === 'confirmed' ? 'var(--teal)' : 'var(--border)'}` }}>
+                  <div style={{ padding: '14px 18px', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 14 }}>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: 'var(--navy)' }}>
+                          {r.first_name && r.last_name ? `${r.first_name} ${r.last_name}` : r.username}
+                        </p>
+                        <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, background: s.bg, color: s.color, border: `1px solid ${s.border}`, flexShrink: 0 }}>
+                          {s.label}
+                        </span>
                       </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 12, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      {r.demand_total && <span style={{ fontWeight: 600, color: 'var(--teal-dark)' }}>{Number(r.demand_total).toLocaleString('fr-DZ')} DA</span>}
-                      <span>{format(new Date(r.created_at), 'dd MMM yyyy HH:mm', { locale: fr })}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                        <Phone size={13} color="var(--teal)" />
+                        <a href={`tel:${r.phone}`} style={{ color: 'var(--teal)', fontWeight: 600 }}>{r.phone}</a>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.84rem', color: 'var(--text-muted)' }}>
+                        <MapPin size={13} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
+                        <span>{r.address}</span>
+                      </div>
+                      {r.analyses?.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                          <FlaskConical size={13} color="var(--teal)" style={{ flexShrink: 0, marginTop: 2 }} />
+                          <span>{r.analyses.join(' · ')}</span>
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', gap: 12, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        {r.demand_total && <span style={{ fontWeight: 600, color: 'var(--teal-dark)' }}>{Number(r.demand_total).toLocaleString('fr-DZ')} DA</span>}
+                        <span>{format(new Date(r.created_at), 'dd MMM yyyy HH:mm', { locale: fr })}</span>
+                      </div>
                     </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 8, flexShrink: 0, justifyContent: isMobile ? 'flex-end' : 'center' }}>
-                    {r.status === 'pending' && (
-                      <button className="btn btn-primary btn-sm"
-                        disabled={updatingId === r.id}
-                        onClick={() => handleStatus(r.id, 'confirmed')}>
-                        {updatingId === r.id ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><CheckCircle size={13} /> Confirmer</>}
-                      </button>
-                    )}
-                    {r.status === 'confirmed' && (
-                      <button className="btn btn-sm" style={{ background: 'var(--navy)', color: 'white' }}
-                        disabled={updatingId === r.id}
-                        onClick={() => handleStatus(r.id, 'done')}>
-                        {updatingId === r.id ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><CheckCircle size={13} /> Marquer effectuée</>}
-                      </button>
-                    )}
-                    {r.status === 'done' && (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--teal)', fontWeight: 600 }}>✓ Effectuée</span>
-                    )}
+                    <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', gap: 8, flexShrink: 0, justifyContent: isMobile ? 'flex-end' : 'center' }}>
+                      {r.status === 'pending' && (
+                        <button className="btn btn-primary btn-sm" disabled={updatingId === r.id} onClick={() => handleStatus(r.id, 'confirmed')}>
+                          {updatingId === r.id ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><CheckCircle size={13} /> Confirmer</>}
+                        </button>
+                      )}
+                      {r.status === 'confirmed' && (
+                        <button className="btn btn-sm" style={{ background: 'var(--navy)', color: 'white' }} disabled={updatingId === r.id} onClick={() => handleStatus(r.id, 'done')}>
+                          {updatingId === r.id ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <><CheckCircle size={13} /> Marquer effectuée</>}
+                        </button>
+                      )}
+                      {r.status === 'done' && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--teal)', fontWeight: 600 }}>✓ Effectuée</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
-      {totalPages > 1 && (
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          total={total}
-          limit={limit}
-          onPageChange={onPageChange}
-        />
+      {totalPages > 1 && !hasFilters && (
+        <Pagination page={page} totalPages={totalPages} total={total} limit={limit} onPageChange={onPageChange} />
       )}
     </div>
   );
@@ -521,7 +657,6 @@ function DemandModal({ demand, onClose, isMobile }) {
               {error && <div className="alert alert-error"><AlertCircle size={14} />{error}</div>}
               {success && <div className="alert alert-success"><CheckCircle size={14} />Traité avec succès !</div>}
 
-              {/* ── Search bar ── */}
               <div style={styles.workerSearchWrap}>
                 <Search size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
                 <input
@@ -539,13 +674,11 @@ function DemandModal({ demand, onClose, isMobile }) {
                 )}
               </div>
 
-              {/* ── Result count ── */}
               {searchQuery && (() => {
                 const n = services.filter(s => matchesQuery(s, searchQuery)).length;
                 return <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>{n === 0 ? 'Aucun résultat' : `${n} analyse${n > 1 ? 's' : ''} trouvée${n > 1 ? 's' : ''}`}</p>;
               })()}
 
-              {/* ── Checklist ── */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 300, overflowY: 'auto', paddingRight: 2 }}>
                 {services.filter(s => matchesQuery(s, searchQuery)).length === 0 && (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '24px 0', color: 'var(--text-muted)' }}>
@@ -599,92 +732,32 @@ const styles = {
   priceTag: { fontWeight: 700, fontSize: '0.84rem', color: 'var(--teal-dark)', background: 'rgba(10,147,150,0.08)', padding: '3px 8px', borderRadius: 20 },
   center: { display: 'flex', justifyContent: 'center', padding: 48 },
   empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '60px 24px', color: 'var(--text-muted)' },
-  mobileTab: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '8px 6px', borderRadius: 'var(--radius-sm)', border: 'none', background: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.8rem', fontWeight: 500, WebkitTapHighlightColor: 'transparent', transition: 'all 0.15s' },
-  mobileTabActive: { background: 'var(--teal)', color: 'white' },
- bottomNav: {
-  position: 'fixed',
-  bottom: 16,
-  left: 16,
-  right: 16,
-
-  height: 68,
-
-  background:
-    'linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.16) 100%)',
-
-  backdropFilter: 'blur(24px) saturate(180%)',
-  WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-
-  borderRadius: 999,
-
-  border: '1px solid rgba(255,255,255,0.35)',
-
-  boxShadow: `
-    inset 0 1px 0 rgba(255,255,255,0.8),
-    inset 0 -1px 0 rgba(255,255,255,0.15),
-    0 8px 32px rgba(0,0,0,0.12),
-    0 2px 8px rgba(0,0,0,0.08)
-  `,
-
-  display: 'flex',
-  alignItems: 'center',
-  padding: 6,
-
-  overflow: 'hidden',
-  zIndex: 200,
-},
-
-glassShine: {
-  position: 'absolute',
-  top: '-50%',
-  left: '-20%',
-  width: '140%',
-  height: '200%',
-
-  background:
-    'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%)',
-
-  transform: 'rotate(-8deg)',
-  pointerEvents: 'none',
-},
-activePill: {
-  position: 'absolute',
-  top: 6,
-  left: 6,                          // anchor here
-  height: 'calc(100% - 12px)',   // compute this dynamically in JSX
-  borderRadius: 999,
-  background: 'rgba(255,255,255,0.30)',
-  backdropFilter: 'blur(12px)',
-  border: '1px solid rgba(255,255,255,0.45)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 16px rgba(0,0,0,0.08)',
-  transition: 'transform 400ms cubic-bezier(.34,1.56,.64,1)',
-  zIndex: 0,
-},
-
-bottomItem: {
-  flex: 1,
-  position: 'relative',
-  zIndex: 2,
-
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-
-  background: 'transparent',
-  border: 'none',
-
-  transition: 'color 250ms ease',
-},
-
-bottomActive: {
- 
-
-  color: 'var(--teal)',
-
-
-
-},
+  bottomNav: {
+    position: 'fixed', bottom: 16, left: 16, right: 16, height: 68,
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0.16) 100%)',
+    backdropFilter: 'blur(24px) saturate(180%)', WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+    borderRadius: 999, border: '1px solid rgba(255,255,255,0.35)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(255,255,255,0.15), 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)',
+    display: 'flex', alignItems: 'center', padding: 6, overflow: 'hidden', zIndex: 200,
+  },
+  glassShine: {
+    position: 'absolute', top: '-50%', left: '-20%', width: '140%', height: '200%',
+    background: 'linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.25) 50%, transparent 70%)',
+    transform: 'rotate(-8deg)', pointerEvents: 'none',
+  },
+  activePill: {
+    position: 'absolute', top: 6, left: 6, height: 'calc(100% - 12px)', borderRadius: 999,
+    background: 'rgba(255,255,255,0.30)', backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.45)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 16px rgba(0,0,0,0.08)',
+    transition: 'transform 400ms cubic-bezier(.34,1.56,.64,1)', zIndex: 0,
+  },
+  bottomItem: {
+    flex: 1, position: 'relative', zIndex: 2,
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+    background: 'transparent', border: 'none', transition: 'color 250ms ease',
+  },
+  bottomActive: { color: 'var(--teal)' },
   overlay: { position: 'fixed', inset: 0, background: 'rgba(13,27,42,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
   modal: { background: 'white', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: 620, maxHeight: '90vh', overflow: 'auto', boxShadow: 'var(--shadow-lg)' },
   modalMobile: { maxHeight: '95vh', borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', position: 'fixed', bottom: 0, left: 0, right: 0, maxWidth: '100%' },
@@ -701,4 +774,7 @@ bottomActive: {
   workerSearchWrap: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'white' },
   workerSearchInput: { flex: 1, border: 'none', outline: 'none', fontSize: '0.85rem', fontFamily: 'var(--font-body)', background: 'transparent', color: 'var(--navy)', minWidth: 0 },
   workerClearBtn: { display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, flexShrink: 0 },
+  filterField: { display: 'flex', alignItems: 'center', gap: 7, padding: '7px 11px', border: 'none', borderRadius: '24px', background: 'none', flex: 1, minWidth: 0 },
+  filterInput: { flex: 1, border: 'none', outline: 'none', fontSize: '0.84rem', fontFamily: 'var(--font-body)', background: 'none', color: 'var(--navy)', minWidth: 0 },
+  filterClearBtn: { display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 2, flexShrink: 0 },
 };
