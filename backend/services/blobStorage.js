@@ -1,4 +1,5 @@
 const cloudinary = require('cloudinary').v2;
+const { withTimeout } = require('../utils/withTimeout');
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -9,14 +10,14 @@ cloudinary.config({
 /**
  * Upload a file buffer to Cloudinary under the "ordonnances" folder.
  * Returns the secure HTTPS URL of the uploaded image.
+ * Times out after 30 seconds.
  */
 const uploadOrdonnance = (fileBuffer, originalName, mimeType) => {
-  return new Promise((resolve, reject) => {
+  const upload = new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder: 'ordonnances',
         resource_type: 'image',
-        // Keep original filename (without extension) as public_id context
         use_filename: true,
         unique_filename: true,
       },
@@ -27,6 +28,8 @@ const uploadOrdonnance = (fileBuffer, originalName, mimeType) => {
     );
     uploadStream.end(fileBuffer);
   });
+
+  return withTimeout(upload, 30_000, 'Cloudinary upload');
 };
 
 /**

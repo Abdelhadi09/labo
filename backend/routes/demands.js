@@ -6,8 +6,9 @@ const { authenticate, requireRole } = require('../middleware/auth');
 const { uploadLimiter } = require('../middleware/rateLimiter');
 const { validateImageFile } = require('../middleware/fileValidation');
 const { validate } = require('../middleware/validate');
-const { uploadOrdonnance } = require('../services/blobStorage');
+const { uploadOrdonnance, deleteOrdonnance } = require('../services/blobStorage');
 const { extractTextFromImage, matchServicesFromText } = require('../services/ocrService');
+const { withTimeout } = require('../utils/withTimeout');
 
 const router = express.Router();
 
@@ -36,6 +37,10 @@ const createDemandValidation = [
     .trim()
     .isIn(['ocr', 'handwritten', 'manual']).withMessage('ordonnance_type must be "ocr", "handwritten" or "manual"'),
 
+  body('idempotency_key')
+    .optional()
+    .isUUID().withMessage('idempotency_key must be a valid UUID'),
+
   // service_ids arrives either as a real array (application/json) or as a
   // JSON-encoded string (multipart form field). Validate format here; the
   // route handler still does the authoritative per-id DB lookup.
@@ -61,13 +66,28 @@ const createDemandValidation = [
 ];
 
 router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.single('ordonnance'), validateImageFile, createDemandValidation, validate, async (req, res) => {
-  try {
-    const { ordonnance_type, service_ids } = req.body;
+  const { ordonnance_type, service_ids, idempotency_key } = req.body;
+  let fileUrl = null;
 
+  try {
     if (ordonnance_type !== 'manual' && !req.file)
       return res.status(400).json({ error: 'Ordonnance file is required' });
 
     const supabase = getPool();
+
+    // Check for duplicate by idempotency_key
+    if (idempotency_key) {
+      const { data: existing } = await supabase
+        .from('demands').select('id, status').eq('idempotency_key', idempotency_key).maybeSingle();
+      if (existing) {
+        return res.status(200).json({
+          id: existing.id,
+          status: existing.status,
+          deduplicated: true,
+          message: 'Demand already submitted (duplicate prevention)'
+        });
+      }
+    }
 
     // Verify client has a profile
     const { data: profile } = await supabase
@@ -80,28 +100,28 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       if (!service_ids) return res.status(400).json({ error: 'service_ids is required for manual submission' });
 
       const ids = Array.isArray(service_ids) ? service_ids : JSON.parse(service_ids);
-      let totalPrice = 0;
-      const selectedServices = [];
+      const { data: selectedServices, error: svcsErr } = await supabase
+        .from('analysis_services')
+        .select('*')
+        .in('id', ids)
+        .eq('is_active', true);
+      if (svcsErr) throw svcsErr;
+      if (!selectedServices || selectedServices.length !== ids.length)
+        return res.status(400).json({ error: 'One or more services not found or inactive' });
 
-      for (const serviceId of ids) {
-        const { data: svc, error } = await supabase
-          .from('analysis_services').select('*').eq('id', serviceId).eq('is_active', true).single();
-        if (error || !svc) return res.status(400).json({ error: `Service ${serviceId} not found` });
-        selectedServices.push(svc);
-        totalPrice += parseFloat(svc.price);
-      }
+      const totalPrice = selectedServices.reduce((sum, s) => sum + parseFloat(s.price), 0);
 
-      const { data: demand, error: demandErr } = await supabase
-        .from('demands')
-        .insert({ client_id: req.user.id, ordonnance_url: 'manual', ordonnance_type: 'manual',
-          status: 'processed', total_price: totalPrice })
-        .select('id').single();
+      const { data: demand, error: demandErr } = await supabase.rpc('create_demand_with_items', {
+        p_client_id: req.user.id,
+        p_ordonnance_url: 'manual',
+        p_ordonnance_type: 'manual',
+        p_status: 'processed',
+        p_ocr_text: null,
+        p_total_price: totalPrice,
+        p_items: selectedServices.map(s => ({ service_id: s.id, price: s.price })),
+        p_idempotency_key: idempotency_key || null,
+      });
       if (demandErr) throw demandErr;
-
-      for (const svc of selectedServices) {
-        await supabase.from('demand_items')
-          .insert({ demand_id: demand.id, service_id: svc.id, price: svc.price });
-      }
 
       return res.status(201).json({
         id: demand.id, status: 'processed', ordonnance_type: 'manual',
@@ -111,8 +131,12 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       });
     }
 
-    // ── File upload ────────────────────────────────────────────────────────
-    const fileUrl = await uploadOrdonnance(req.file.buffer, req.file.originalname, req.file.mimetype);
+    // ── File upload (with timeout) ──────────────────────────────────────────
+    fileUrl = await withTimeout(
+      uploadOrdonnance(req.file.buffer, req.file.originalname, req.file.mimetype),
+      30_000,
+      'Cloudinary upload'
+    );
 
     let ocrText = null;
     let matchedServices = [];
@@ -120,7 +144,11 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
     let status = 'pending';
 
     if (ordonnance_type === 'ocr') {
-      ocrText = await extractTextFromImage(req.file.buffer);
+      ocrText = await withTimeout(
+        extractTextFromImage(req.file.buffer),
+        60_000,
+        'OCR processing'
+      );
 
       const { data: allServices } = await supabase
         .from('analysis_services').select('*').eq('is_active', true);
@@ -130,17 +158,18 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       status = matchedServices.length > 0 ? 'ocr_processed' : 'ocr_no_match';
     }
 
-    const { data: demand, error: demandErr } = await supabase
-      .from('demands')
-      .insert({ client_id: req.user.id, ordonnance_url: fileUrl, ordonnance_type,
-        status, ocr_text: ocrText, total_price: totalPrice })
-      .select('id').single();
+    // ── DB insert (with file cleanup on failure) ────────────────────────────
+    const { data: demand, error: demandErr } = await supabase.rpc('create_demand_with_items', {
+      p_client_id: req.user.id,
+      p_ordonnance_url: fileUrl,
+      p_ordonnance_type: ordonnance_type,
+      p_status: status,
+      p_ocr_text: ocrText,
+      p_total_price: totalPrice,
+      p_items: matchedServices.map(s => ({ service_id: s.id, price: s.price })),
+      p_idempotency_key: idempotency_key || null,
+    });
     if (demandErr) throw demandErr;
-
-    for (const svc of matchedServices) {
-      await supabase.from('demand_items')
-        .insert({ demand_id: demand.id, service_id: svc.id, price: svc.price });
-    }
 
     res.status(201).json({
       id: demand.id, status, ordonnance_type,
@@ -153,6 +182,12 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
         : 'Ordonnance soumise. Un technicien la traitera sous peu.',
     });
   } catch (err) {
+    // Cleanup: delete orphaned file if it was uploaded
+    if (fileUrl) {
+      deleteOrdonnance(fileUrl).catch(delErr => {
+        console.error('Failed to clean up orphaned Cloudinary file:', { fileUrl, delErr });
+      });
+    }
     console.error('Submit demand error:', err);
     res.status(500).json({ error: err.message || 'Failed to submit demand' });
   }
@@ -288,28 +323,25 @@ router.put('/:id/process', authenticate, requireRole('worker'), processDemandVal
       return res.status(400).json({ error: 'Demand has already been processed' });
 
     let totalPrice = 0;
-    const selectedServices = [];
+    const { data: selectedServices, error: svcsErr } = await supabase
+      .from('analysis_services')
+      .select('*')
+      .in('id', service_ids)
+      .eq('is_active', true);
+    if (svcsErr) throw svcsErr;
+    if (!selectedServices || selectedServices.length !== service_ids.length)
+      return res.status(400).json({ error: 'One or more services not found or inactive' });
 
-    for (const serviceId of service_ids) {
-      const { data: svc, error } = await supabase
-        .from('analysis_services').select('*').eq('id', serviceId).eq('is_active', true).single();
-      if (error || !svc) return res.status(400).json({ error: `Service ${serviceId} not found` });
-      totalPrice += parseFloat(svc.price);
-      selectedServices.push(svc);
-    }
+    totalPrice = selectedServices.reduce((sum, s) => sum + parseFloat(s.price), 0);
 
     // Remove old items then insert new ones
-    await supabase.from('demand_items').delete().eq('demand_id', demand.id);
-    for (const svc of selectedServices) {
-      await supabase.from('demand_items')
-        .insert({ demand_id: demand.id, service_id: svc.id, price: svc.price });
-    }
-
-    const { error: updateErr } = await supabase.from('demands')
-      .update({ status: 'processed', total_price: totalPrice,
-        notes: notes || null, updated_at: new Date().toISOString() })
-      .eq('id', demand.id);
-    if (updateErr) throw updateErr;
+    const { error: processErr } = await supabase.rpc('process_demand_with_items', {
+      p_demand_id: demand.id,
+      p_total_price: totalPrice,
+      p_notes: notes || null,
+      p_items: selectedServices.map(s => ({ service_id: s.id, price: s.price })),
+    });
+    if (processErr) throw processErr;
 
     res.json({
       message: 'Demand processed successfully',

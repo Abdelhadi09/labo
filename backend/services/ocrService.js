@@ -1,14 +1,17 @@
 const Tesseract = require('tesseract.js');
+const { withTimeout } = require('../utils/withTimeout');
 
 /**
- * Run OCR on an image buffer and return extracted text
+ * Run OCR on an image buffer and return extracted text.
+ * Times out after 60 seconds for large images.
  */
 const extractTextFromImage = async (imageBuffer) => {
   try {
-    const result = await Tesseract.recognize(imageBuffer, 'fra+eng', {
+    const ocr = Tesseract.recognize(imageBuffer, 'fra+eng', {
       logger: () => {}, // suppress logs
-    });
-    return result.data.text;
+    }).then(result => result.data.text);
+
+    return await withTimeout(ocr, 60_000, 'Tesseract OCR');
   } catch (err) {
     console.error('OCR Error:', err);
     throw new Error('Failed to perform OCR on the image');
