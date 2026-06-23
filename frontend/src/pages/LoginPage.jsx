@@ -1,15 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { FlaskConical, AlertCircle, Mail, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 
 export default function LoginPage() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
+  const isMobile = useIsMobile();
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>

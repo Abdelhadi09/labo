@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { FlaskConical, AlertCircle, Mail, ArrowLeft, CheckCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const { signUpEmail, sendEmailOTP, verifyEmailOTP, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
+  const isMobile = useIsMobile();
 
   const [method, setMethod] = useState('email'); // 'email' | 'emailotp'
   const [step, setStep]     = useState(1);

@@ -1,33 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { demandsAPI, servicesAPI } from '../services/api';
+import { normalize, matchesQuery, highlight } from '../utils/search';
 import {
   Upload, FileImage, Scan, PenLine, CheckCircle,
   AlertCircle, X, DollarSign, FlaskConical, ListChecks,
   Search, ChevronDown
 } from 'lucide-react';
-
-/* ─────────────────────────────────────────────
-   Fuzzy / keyword matcher
-   Matches against name, code, and keywords field
-───────────────────────────────────────────── */
-function normalize(str = '') {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // strip accents
-    .replace(/[^a-z0-9\s]/g, '');
-}
-
-function matchesQuery(service, query) {
-  if (!query.trim()) return true;
-  const q = normalize(query);
-  const haystack = normalize(
-    [service.name, service.code, service.keywords || ''].join(' ')
-  );
-  // Every word of the query must appear somewhere
-  return q.split(/\s+/).every(word => haystack.includes(word));
-}
 
 /* ─────────────────────────────────────────────
    Main component
@@ -110,6 +89,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
     setError('');
     setResult(null);
     try {
+      const idempotencyKey = crypto.randomUUID();
       if (type === 'manual') {
         if (selectedServices.length === 0) {
           setError('Sélectionnez au moins une analyse');
@@ -119,6 +99,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
         const formData = new FormData();
         formData.append('ordonnance_type', 'manual');
         formData.append('service_ids', JSON.stringify(selectedServices));
+        formData.append('idempotency_key', idempotencyKey);
         const res = await demandsAPI.submit(formData);
         setResult(res.data);
         if (onSuccess) onSuccess(res.data);
@@ -127,6 +108,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
         const formData = new FormData();
         formData.append('ordonnance', file);
         formData.append('ordonnance_type', type);
+        formData.append('idempotency_key', idempotencyKey);
         const res = await demandsAPI.submit(formData);
         setResult(res.data);
         if (onSuccess) onSuccess(res.data);
@@ -381,30 +363,7 @@ export default function OrdonnanceUpload({ onSuccess }) {
 }
 
 /* ─────────────────────────────────────────────
-   Highlight matched text in service names
-───────────────────────────────────────────── */
-function highlight(text, query) {
-  if (!query.trim()) return text;
-  const word = query.trim().split(/\s+/)[0]; // highlight first word only for simplicity
-  const normWord = normalize(word);
-  const normText = normalize(text);
-  const idx = normText.indexOf(normWord);
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark style={{ background: 'rgba(10,147,150,0.18)', color: 'inherit', borderRadius: 2, padding: '0 2px' }}>
-        {text.slice(idx, idx + word.length)}
-      </mark>
-      {text.slice(idx + word.length)}
-    </>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   Remarque confirmation modal
-   Shown only if selected services have a non-empty
-   description (preparation instructions / remarques)
+   Main component
 ───────────────────────────────────────────── */
 function RemarqueModal({ services, loading, onCancel, onConfirm }) {
   return (

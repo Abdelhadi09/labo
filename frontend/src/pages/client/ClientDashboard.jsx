@@ -4,21 +4,12 @@ import ProfileForm from '../../components/ProfileForm';
 import OrdonnanceUpload from '../../components/OrdonnanceUpload';
 import StatusBadge from '../../components/StatusBadge';
 import NurseRequestModal from '../../components/NurseRequestModal';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { demandsAPI, profileAPI } from '../../services/api';
 import { supabase } from '../../services/supabaseClient';
 import { LayoutDashboard, User, Upload, FileText, RefreshCw, DollarSign, FlaskConical, Stethoscope } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
-  useEffect(() => {
-    const fn = () => setIsMobile(window.innerWidth <= 768);
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
-  return isMobile;
-}
 
 function typeLabel(type) {
   if (type === 'ocr') return '🖨️ Imprimée';

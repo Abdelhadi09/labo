@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '../../components/Navbar';
 import StatusBadge from '../../components/StatusBadge';
 import Pagination from '../../components/Pagination';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { normalize, matchesQuery, highlight } from '../../utils/search';
 import { demandsAPI, servicesAPI, nurseAPI } from '../../services/api';
 import { supabase } from '../../services/supabaseClient';
 import {
@@ -13,22 +15,6 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 /* ── Search helpers (accent-insensitive, keyword-aware) ── */
-function normalize(str = '') {
-  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9\s]/g, '');
-}
-function matchesQuery(service, query) {
-  if (!query.trim()) return true;
-  const q = normalize(query);
-  const haystack = normalize([service.name, service.code, service.keywords || ''].join(' '));
-  return q.split(/\s+/).every(w => haystack.includes(w));
-}
-function highlight(text, query) {
-  if (!query.trim()) return text;
-  const word = query.trim().split(/\s+/)[0];
-  const idx = normalize(text).indexOf(normalize(word));
-  if (idx === -1) return text;
-  return <>{text.slice(0, idx)}<mark style={{ background: 'rgba(10,147,150,0.18)', color: 'inherit', borderRadius: 2, padding: '0 2px' }}>{text.slice(idx, idx + word.length)}</mark>{text.slice(idx + word.length)}</>;
-}
 
 /* ── Filter helpers ── */
 function getClientName(item) {
@@ -57,21 +43,12 @@ function applyFilters(items, nameFilter, dateFilter) {
   });
 }
 
-function useIsMobile() {
-  const [v, setV] = useState(window.innerWidth <= 768);
-  useEffect(() => {
-    const fn = () => setV(window.innerWidth <= 768);
-    window.addEventListener('resize', fn);
-    return () => window.removeEventListener('resize', fn);
-  }, []);
-  return v;
-}
-
 function typeLabel(type) {
   if (type === 'ocr') return '🖨️ Imprimée';
   if (type === 'manual') return '📋 Manuelle';
-  return '✍️ Manuscrite';
+  else return '✍️ Manuscrite';
 }
+
 
 const NURSE_STATUS = {
   pending:   { label: 'En attente', color: '#92400e', bg: '#fef3c7', border: '#fcd34d' },
