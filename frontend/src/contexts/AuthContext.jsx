@@ -1,20 +1,40 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { authAPI } from '../services/api';
+import { authAPI, TOKEN_KEY, REFRESH_TOKEN_KEY } from '../services/api';
 
 const AuthContext = createContext(null);
 
-export const AuthProvider = ({ children }) => {
-  // Start as null — hydrate only after backend verification to avoid stale state
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  // Prevent the Supabase listener from redundantly calling /client/session
-  // when we already have a valid backend token (e.g. on TOKEN_REFRESHED events)
-  const hasBackendToken = useRef(!!localStorage.getItem('token'));
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  // On mount: verify any stored token with the backend
+const saveSession = (accessToken, refreshToken, user) => {
+  localStorage.setItem(TOKEN_KEY, accessToken);
+  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  localStorage.setItem('user', JSON.stringify(user));
+};
+
+const clearSession = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
+  // Remove legacy key if still present from previous build
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+};
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+export const AuthProvider = ({ children }) => {
+  const [user, setUser]       = useState(null);
+  const [loading, setLoading] = useState(true);
+  // Ref prevents the Supabase listener from triggering a redundant /client/session
+  // exchange when we already have a valid backend access token.
+  const hasBackendToken = useRef(!!localStorage.getItem(TOKEN_KEY));
+
+  // ── On mount: verify stored access token with the backend ──────────────────
+  // We call /auth/me rather than blindly trusting localStorage. If the token is
+  // expired the axios interceptor will silently refresh it; if the refresh token
+  // is also invalid, it will clear storage and redirect to /login.
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem('token');
     if (token) {
       authAPI.me()
         .then(res => {
@@ -22,8 +42,8 @@ export const AuthProvider = ({ children }) => {
           hasBackendToken.current = true;
         })
         .catch(() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
+          // Interceptor already cleared storage if refresh failed
+          clearSession();
           hasBackendToken.current = false;
           setUser(null);
         })
@@ -33,20 +53,16 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // Listen for Supabase auth state changes (Google OAuth redirect, email confirmation)
-  // Only exchange for a backend JWT when we don't already have one — this prevents
-  // hammering /client/session on every TOKEN_REFRESHED tab-focus event.
+  // ── Supabase auth listener (Google OAuth redirect, email OTP confirmation) ──
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        clearSession();
         hasBackendToken.current = false;
         setUser(null);
         return;
       }
 
-      // Only exchange when signing in fresh (not on token refresh if we already have a JWT)
       if (
         session?.access_token &&
         (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
@@ -54,9 +70,8 @@ export const AuthProvider = ({ children }) => {
       ) {
         try {
           const res = await authAPI.clientSession(session.access_token);
-          const { token, user: backendUser } = res.data;
-          localStorage.setItem('token', token);
-          localStorage.setItem('user', JSON.stringify(backendUser));
+          const { accessToken, refreshToken, user: backendUser } = res.data;
+          saveSession(accessToken, refreshToken, backendUser);
           hasBackendToken.current = true;
           setUser(backendUser);
         } catch (err) {
@@ -67,18 +82,17 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // ── Worker: username + password → our JWT ──────────────────────────────────
+  // ── Worker: username + password ────────────────────────────────────────────
   const workerLogin = async (credentials) => {
     const res = await authAPI.workerLogin(credentials);
-    const { token, user: backendUser } = res.data;
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(backendUser));
+    const { accessToken, refreshToken, user: backendUser } = res.data;
+    saveSession(accessToken, refreshToken, backendUser);
     hasBackendToken.current = true;
     setUser(backendUser);
     return backendUser;
   };
 
-  // ── Client: email + password sign-up (Supabase sends confirmation email) ───
+  // ── Client: email + password sign-up ──────────────────────────────────────
   const signUpEmail = async (email, password) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
@@ -86,8 +100,6 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── Client: email + password sign-in ──────────────────────────────────────
-  // Explicitly exchanges the Supabase session for a backend JWT so login is
-  // instant and doesn't rely on the async onAuthStateChange callback.
   const signInEmail = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
@@ -96,15 +108,14 @@ export const AuthProvider = ({ children }) => {
     if (!accessToken) throw new Error('No session returned from Supabase');
 
     const res = await authAPI.clientSession(accessToken);
-    const { token, user: backendUser } = res.data;
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(backendUser));
+    const { accessToken: backendAccess, refreshToken, user: backendUser } = res.data;
+    saveSession(backendAccess, refreshToken, backendUser);
     hasBackendToken.current = true;
     setUser(backendUser);
     return backendUser;
   };
 
-  // ── Client: send passwordless email OTP ───────────────────────────────────
+  // ── Client: passwordless email OTP ────────────────────────────────────────
   const sendEmailOTP = async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -113,7 +124,6 @@ export const AuthProvider = ({ children }) => {
     if (error) throw error;
   };
 
-  // ── Client: verify email OTP then exchange for backend JWT ────────────────
   const verifyEmailOTP = async (email, token) => {
     const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
     if (error) throw error;
@@ -122,9 +132,8 @@ export const AuthProvider = ({ children }) => {
     if (!session?.access_token) throw new Error('OTP verified but no session was created');
 
     const res = await authAPI.clientSession(session.access_token);
-    const { token: jwt, user: backendUser } = res.data;
-    localStorage.setItem('token', jwt);
-    localStorage.setItem('user', JSON.stringify(backendUser));
+    const { accessToken: backendAccess, refreshToken, user: backendUser } = res.data;
+    saveSession(backendAccess, refreshToken, backendUser);
     hasBackendToken.current = true;
     setUser(backendUser);
     return backendUser;
@@ -140,10 +149,16 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ── Logout ─────────────────────────────────────────────────────────────────
-  const logout = async () => {
+  const logout = async ({ allDevices = false } = {}) => {
+    const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+    try {
+      // Revoke the refresh token server-side before clearing locally
+      await authAPI.logout(refreshToken, allDevices);
+    } catch {
+      // Best-effort — clear locally regardless
+    }
     await supabase.auth.signOut();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     hasBackendToken.current = false;
     setUser(null);
   };
