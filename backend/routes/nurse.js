@@ -3,6 +3,7 @@ const { body, param } = require('express-validator');
 const { getPool } = require('../config/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const posthog = require('../config/posthog');
 
 const router = express.Router();
 
@@ -69,9 +70,17 @@ router.post('/', authenticate, requireRole('client'), nurseRequestValidation, va
       .select('id').single();
 
     if (error) throw error;
+
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'nurse_visit_requested',
+      properties: { demand_id, nurse_request_id: data.id },
+    });
+
     res.status(201).json({ id: data.id, message: "Demande d'infirmière soumise avec succès" });
   } catch (err) {
     console.error('Nurse request error:', err);
+    posthog.captureException(err, req.user?.id, { endpoint: '/api/nurse' });
     res.status(500).json({ error: 'Erreur lors de la soumission' });
   }
 });
@@ -141,9 +150,17 @@ router.put('/:id/status', authenticate, requireRole('worker'), nurseStatusValida
     const { error } = await supabase
       .from('nurse_requests').update({ status }).eq('id', req.params.id);
     if (error) throw error;
+
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'nurse_request_status_updated',
+      properties: { nurse_request_id: req.params.id, status },
+    });
+
     res.json({ message: 'Statut mis à jour' });
   } catch (err) {
     console.error('Update nurse status error:', err);
+    posthog.captureException(err, req.user?.id, { endpoint: `/api/nurse/${req.params.id}/status` });
     res.status(500).json({ error: 'Erreur lors de la mise à jour' });
   }
 });

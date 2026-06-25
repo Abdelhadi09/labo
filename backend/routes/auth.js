@@ -7,6 +7,7 @@ const { body } = require('express-validator');
 const { getPool }    = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { validate }   = require('../middleware/validate');
+const posthog = require('../config/posthog');
 
 const router = express.Router();
 
@@ -112,6 +113,16 @@ router.post('/worker/login', workerLoginValidation, validate, async (req, res) =
     const payload = { id: user.id, username: user.username, role: 'worker' };
     const { accessToken, refreshToken } = await issueTokenPair(payload);
 
+    posthog.identify({
+      distinctId: user.id,
+      properties: { username: user.username, role: 'worker' },
+    });
+    posthog.capture({
+      distinctId: user.id,
+      event: 'worker_logged_in',
+      properties: { username: user.username },
+    });
+
     res.json({
       accessToken,
       refreshToken,
@@ -119,6 +130,7 @@ router.post('/worker/login', workerLoginValidation, validate, async (req, res) =
     });
   } catch (err) {
     console.error('Worker login error:', err);
+    posthog.captureException(err, undefined, { endpoint: '/api/auth/worker/login' });
     res.status(500).json({ error: 'Login failed' });
   }
 });
@@ -139,6 +151,13 @@ router.post('/client/session', clientSessionValidation, validate, async (req, re
 
     const identifier = sbUser.email || sbUser.id;
 
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', sbUser.id)
+      .maybeSingle();
+    const isNewUser = !existingUser;
+
     const { error: upsertError } = await supabase
       .from('users')
       .upsert(
@@ -154,6 +173,30 @@ router.post('/client/session', clientSessionValidation, validate, async (req, re
     const payload = { id: sbUser.id, username: identifier, role: 'client' };
     const { accessToken, refreshToken } = await issueTokenPair(payload);
 
+    posthog.identify({
+      distinctId: sbUser.id,
+      properties: {
+        email: sbUser.email,
+        username: identifier,
+        role: 'client',
+        $set_once: { first_login: new Date().toISOString() },
+      },
+    });
+
+    if (isNewUser) {
+      posthog.capture({
+        distinctId: sbUser.id,
+        event: 'client_registered',
+        properties: { email: sbUser.email, auth_provider: sbUser.app_metadata?.provider || 'email' },
+      });
+    }
+
+    posthog.capture({
+      distinctId: sbUser.id,
+      event: 'client_session_created',
+      properties: { role: 'client', is_new_user: isNewUser },
+    });
+
     res.json({
       accessToken,
       refreshToken,
@@ -161,6 +204,7 @@ router.post('/client/session', clientSessionValidation, validate, async (req, re
     });
   } catch (err) {
     console.error('Client session error:', err);
+    posthog.captureException(err, undefined, { endpoint: '/api/auth/client/session' });
     res.status(500).json({ error: 'Session verification failed' });
   }
 });
@@ -267,6 +311,12 @@ router.post('/logout', authenticate, async (req, res) => {
         .eq('token_hash', tokenHash)
         .eq('user_id', req.user.id);   // ensure user can only revoke their own tokens
     }
+
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'user_logged_out',
+      properties: { all_devices: allDevices },
+    });
 
     res.json({ ok: true });
   } catch (err) {

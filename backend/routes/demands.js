@@ -9,6 +9,7 @@ const { validate } = require('../middleware/validate');
 const { uploadOrdonnance, deleteOrdonnance } = require('../services/blobStorage');
 const { extractTextFromImage, matchServicesFromText } = require('../services/ocrService');
 const { withTimeout } = require('../utils/withTimeout');
+const posthog = require('../config/posthog');
 
 const router = express.Router();
 
@@ -123,6 +124,16 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       });
       if (demandErr) throw demandErr;
 
+      posthog.capture({
+        distinctId: req.user.id,
+        event: 'demand_submitted',
+        properties: {
+          ordonnance_type: 'manual',
+          service_count: selectedServices.length,
+          total_price: totalPrice,
+        },
+      });
+
       return res.status(201).json({
         id: demand.id, status: 'processed', ordonnance_type: 'manual',
         matched_services: selectedServices.map(s => ({ id: s.id, name: s.name, price: s.price })),
@@ -171,6 +182,29 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
     });
     if (demandErr) throw demandErr;
 
+    if (ordonnance_type === 'ocr') {
+      const ocrEvent = matchedServices.length > 0 ? 'demand_ocr_matched' : 'demand_ocr_no_match';
+      posthog.capture({
+        distinctId: req.user.id,
+        event: ocrEvent,
+        properties: {
+          matched_service_count: matchedServices.length,
+          total_price: totalPrice,
+        },
+      });
+    }
+
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'demand_submitted',
+      properties: {
+        ordonnance_type,
+        service_count: matchedServices.length,
+        total_price: totalPrice,
+        status,
+      },
+    });
+
     res.status(201).json({
       id: demand.id, status, ordonnance_type,
       matched_services: matchedServices.map(s => ({ id: s.id, name: s.name, price: s.price })),
@@ -189,6 +223,7 @@ router.post('/', authenticate, requireRole('client'), uploadLimiter, upload.sing
       });
     }
     console.error('Submit demand error:', err);
+    posthog.captureException(err, req.user?.id, { endpoint: '/api/demands', method: 'POST' });
     res.status(500).json({ error: err.message || 'Failed to submit demand' });
   }
 });
@@ -343,6 +378,18 @@ router.put('/:id/process', authenticate, requireRole('worker'), processDemandVal
     });
     if (processErr) throw processErr;
 
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'demand_processed',
+      properties: {
+        demand_id: demand.id,
+        client_id: demand.client_id,
+        service_count: selectedServices.length,
+        total_price: totalPrice,
+        previous_status: demand.status,
+      },
+    });
+
     res.json({
       message: 'Demand processed successfully',
       total_price: totalPrice,
@@ -350,6 +397,7 @@ router.put('/:id/process', authenticate, requireRole('worker'), processDemandVal
     });
   } catch (err) {
     console.error('Process demand error:', err);
+    posthog.captureException(err, req.user?.id, { endpoint: `/api/demands/${req.params.id}/process` });
     res.status(500).json({ error: 'Failed to process demand' });
   }
 });

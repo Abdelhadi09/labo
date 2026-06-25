@@ -3,6 +3,7 @@ const { body } = require('express-validator');
 const { getPool } = require('../config/database');
 const { authenticate, requireRole } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
+const posthog = require('../config/posthog');
 
 const router = express.Router();
 
@@ -75,9 +76,16 @@ router.put('/', authenticate, requireRole('client'), profileValidation, validate
       if (error) throw error;
     }
 
+    posthog.capture({
+      distinctId: req.user.id,
+      event: 'profile_saved',
+      properties: { is_update: !!existing },
+    });
+
     res.json({ message: 'Profile saved successfully' });
   } catch (err) {
     console.error('Profile save error:', err);
+    posthog.captureException(err, req.user?.id, { endpoint: '/api/profile' });
     res.status(500).json({ error: 'Failed to save profile' });
   }
 });
