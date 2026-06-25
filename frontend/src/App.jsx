@@ -8,8 +8,10 @@ const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
 const ClientDashboard = lazy(() => import('./pages/client/ClientDashboard'));
 const WorkerDashboard = lazy(() => import('./pages/worker/WorkerDashboard'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 import ErrorBoundary from './components/ErrorBoundry.jsx';
 import PageLoader from './components/PageLoader';
+import { hasCompletedOnboarding } from './utils/onboarding';
 
 const ProtectedRoute = ({ children, role }) => {
   const { user, loading } = useAuth();
@@ -19,10 +21,34 @@ const ProtectedRoute = ({ children, role }) => {
   return children;
 };
 
+const OnboardingGuard = ({ children }) => {
+  const onboardingDone = hasCompletedOnboarding();
+  if (!onboardingDone) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  return children;
+};
+
 const RootRedirect = () => {
   const { user, loading } = useAuth();
+
   if (loading) return <PageLoader />;
-  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user) {
+    const onboardingDone = hasCompletedOnboarding();
+
+    return (
+      <Navigate
+        to={
+          onboardingDone
+            ? '/login'
+            : '/onboarding'
+        }
+        replace
+      />
+    );
+  }
+
   return user.role === 'worker'
     ? <Navigate to="/worker" replace />
     : <Navigate to="/client" replace />;
@@ -35,8 +61,26 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route
+  path="/onboarding"
+  element={<OnboardingPage />}
+/>
+         <Route
+  path="/login"
+  element={
+    <OnboardingGuard>
+      <LoginPage />
+    </OnboardingGuard>
+  }
+/>
+          <Route
+  path="/register"
+  element={
+    <OnboardingGuard>
+      <RegisterPage />
+    </OnboardingGuard>
+  }
+/>
           <Route path="/client/*" element={
             <ProtectedRoute role="client">
               <ErrorBoundary>
